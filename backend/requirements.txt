@@ -1,0 +1,21 @@
+# === Core Framework ===
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.18
+
+# === Database ===
+chromadb==0.6.3
+
+# === Document Processing ===
+pymupdf==1.25.1
+
+# === AI / Embeddings / LLM ===
+openai==1.59.6
+
+# === Utilities ===
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# === Optional: Local Embedding Model ===
+# Uncomment below to use local embeddings instead of OpenAI API
+# sentence-transformers==3.3.1
