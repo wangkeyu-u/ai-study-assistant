@@ -73,7 +73,10 @@ class Generator:
             )
             self.model = model
         else:
-            self.client = AsyncOpenAI(api_key=api_key)
+            kwargs = {"api_key": api_key}
+            if base_url:
+                kwargs["base_url"] = base_url
+            self.client = AsyncOpenAI(**kwargs)
             self.model = model
 
     def build_prompt(self, query: str, chunks: list, history: list[dict] | None = None) -> str:
@@ -91,7 +94,8 @@ class Generator:
             ))
 
         context = "\n".join(context_parts)
-        return SYSTEM_PROMPT.format(context=context)
+        history_note = HISTORY_NOTE if history else ""
+        return SYSTEM_PROMPT.format(history_note=history_note, context=context)
 
     async def generate(self, query: str, chunks: list, history: list[dict] | None = None) -> GenerationResult:
         """Generate a complete answer (non-streaming).

@@ -540,3 +540,35 @@ export async function healthCheck(): Promise<Record<string, unknown>> {
   const res = await fetch(`${BASE_URL}/health`);
   return res.json();
 }
+
+// ── Settings API ──────────────────────────────────────────
+
+export interface ApiKeyStatus {
+  has_key: boolean;
+  key_preview: string;
+  llm_provider: string;
+  llm_model: string;
+  embedding_provider: string;
+  embedding_model: string;
+}
+
+export interface ApiKeyUpdateResponse {
+  success: boolean;
+  message: string;
+}
+
+export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
+  const res = await fetch(`${BASE_URL}/settings/api-key`);
+  if (!res.ok) throw new Error('获取 API Key 状态失败');
+  return res.json();
+}
+
+export async function updateApiKey(apiKey: string): Promise<ApiKeyUpdateResponse> {
+  const res = await fetch(`${BASE_URL}/settings/api-key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+  if (!res.ok) throw new Error('更新 API Key 失败');
+  return res.json();
+}

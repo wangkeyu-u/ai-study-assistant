@@ -23,9 +23,12 @@ class BaseEmbedder(ABC):
 class OpenAIEmbedder(BaseEmbedder):
     """Use OpenAI API for embeddings (also works with any OpenAI-compatible endpoint)."""
 
-    def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
+    def __init__(self, api_key: str, model: str = "text-embedding-3-small", base_url: str | None = None):
         from openai import OpenAI
-        self.client = OpenAI(api_key=api_key)
+        kwargs = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        self.client = OpenAI(**kwargs)
         self.model = model
 
     def embed(self, texts: list[str]) -> list[list[float]]:
@@ -70,6 +73,7 @@ def create_embedder(provider: str, **kwargs) -> BaseEmbedder:
         return OpenAIEmbedder(
             api_key=kwargs.get("api_key", ""),
             model=kwargs.get("model", "text-embedding-3-small"),
+            base_url=kwargs.get("base_url"),
         )
     elif provider == "local":
         return LocalEmbedder(

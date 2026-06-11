@@ -140,7 +140,7 @@ class RAGPipeline:
                     "doc_id": doc_id,
                     "doc_name": filename,
                     "chunk_index": c.chunk_index,
-                    "page_num": c.page_num,
+                    "page_num": c.page_num if c.page_num is not None else 0,
                     "heading": c.heading or "",
                     "collection_id": collection_id or "",
                 }

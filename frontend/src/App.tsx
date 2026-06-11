@@ -4,6 +4,7 @@ import Chat from './pages/Chat';
 import Quiz from './pages/Quiz';
 import Dashboard from './pages/Dashboard';
 import KnowledgeGraph from './pages/KnowledgeGraph';
+import Settings from './pages/Settings';
 
 function App() {
   return (
@@ -77,6 +78,20 @@ function App() {
               <span className="text-base w-6 text-center">🔗</span> 知识图谱
             </NavLink>
           </div>
+          <div className="px-3 pb-3">
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
+                  isActive
+                    ? 'bg-white/10 text-white font-medium shadow-sm backdrop-blur-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`
+              }
+            >
+              <span className="text-base w-6 text-center">⚙️</span> 设置
+            </NavLink>
+          </div>
           <div className="p-4 border-t border-slate-700/50">
             <div className="flex items-center justify-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -93,6 +108,7 @@ function App() {
             <Route path="/quiz" element={<Quiz />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/knowledge-graph" element={<KnowledgeGraph />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>

@@ -23,3 +23,6 @@ Thumbs.db
 # Data
 *.db
 *.db-journal
+
+# Test files
+test-*.pdf

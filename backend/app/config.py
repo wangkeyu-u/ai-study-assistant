@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"                 # "openai" | "ollama"
     llm_model: str = "gpt-4o-mini"
     ollama_base_url: str = "http://localhost:11434/v1"
+    openai_base_url: str = ""                    # custom base URL (e.g. DeepSeek)
 
     # ── RAG ────────────────────────────────────────────────
     chunk_size: int = 512                        # target tokens per chunk

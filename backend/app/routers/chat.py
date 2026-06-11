@@ -91,9 +91,15 @@ async def chat(request: ChatRequest):
                 (assistant_msg_id, session_id, gen_result.content),
             )
 
-            # Save citations
+            # Save citations (lookup doc_id from chunks table)
             for citation in gen_result.citations:
                 citation_id = str(uuid.uuid4())
+                chunk_doc_id = conn.execute(
+                    "SELECT doc_id FROM chunks WHERE id=?", (citation.chunk_id,)
+                ).fetchone()
+                doc_id = chunk_doc_id["doc_id"] if chunk_doc_id else ""
+                if not doc_id:
+                    continue  # skip orphan citations
                 conn.execute(
                     """INSERT INTO citations
                        (id, message_id, doc_id, chunk_id, doc_name, page_num, chunk_index, text_preview)
@@ -101,7 +107,7 @@ async def chat(request: ChatRequest):
                     (
                         citation_id,
                         assistant_msg_id,
-                        "",   # doc_id from metadata if available
+                        doc_id,
                         citation.chunk_id,
                         citation.doc_name,
                         citation.page_num,

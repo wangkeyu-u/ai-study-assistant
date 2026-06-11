@@ -12,7 +12,7 @@ from app.services.embedder import create_embedder
 from app.services.vectorstore import VectorStore
 from app.services.generator import Generator
 from app.services.rag import RAGPipeline
-from app.routers import documents, chat, collections as collections_router, backup as backup_router, quiz as quiz_router, knowledge_graph as knowledge_graph_router, multi_agent as multi_agent_router
+from app.routers import documents, chat, collections as collections_router, backup as backup_router, quiz as quiz_router, knowledge_graph as knowledge_graph_router, multi_agent as multi_agent_router, settings as settings_router
 
 # ── Logging ────────────────────────────────────────────────
 logging.basicConfig(
@@ -44,6 +44,8 @@ async def lifespan(app: FastAPI):
     embed_kwargs = {"model": settings.embedding_model}
     if settings.embedding_provider == "openai":
         embed_kwargs["api_key"] = settings.openai_api_key
+        if settings.openai_base_url:
+            embed_kwargs["base_url"] = settings.openai_base_url
     embedder = create_embedder(settings.embedding_provider, **embed_kwargs)
     logger.info("Embedding model loaded")
 
@@ -59,7 +61,9 @@ async def lifespan(app: FastAPI):
         provider=settings.llm_provider,
         model=settings.llm_model,
         api_key=settings.openai_api_key,
-        base_url=settings.ollama_base_url if settings.llm_provider == "ollama" else None,
+        base_url=settings.ollama_base_url if settings.llm_provider == "ollama"
+                  else settings.openai_base_url if settings.openai_base_url
+                  else None,
     )
     logger.info("LLM generator ready (provider=%s, model=%s)",
                 settings.llm_provider, settings.llm_model)
@@ -88,7 +92,7 @@ app = FastAPI(
 # CORS — allow frontend dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -102,6 +106,7 @@ app.include_router(backup_router.router)
 app.include_router(quiz_router.router)
 app.include_router(knowledge_graph_router.router)
 app.include_router(multi_agent_router.router)
+app.include_router(settings_router.router)
 
 
 # ── Debug endpoint ─────────────────────────────────────────
