@@ -23,12 +23,15 @@ class BaseEmbedder(ABC):
 class OpenAIEmbedder(BaseEmbedder):
     """Use OpenAI API for embeddings (also works with any OpenAI-compatible endpoint)."""
 
-    def __init__(self, api_key: str, model: str = "text-embedding-3-small", base_url: str | None = None):
+    def __init__(
+        self, api_key: str, model: str = "text-embedding-3-small", base_url: str | None = None
+    ):
         from openai import OpenAI
-        kwargs = {"api_key": api_key}
+
+        kwargs: dict = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
-        self.client = OpenAI(**kwargs)
+        self.client = OpenAI(**kwargs)  # type: ignore[arg-type]
         self.model = model
 
     def embed(self, texts: list[str]) -> list[list[float]]:
@@ -47,11 +50,10 @@ class LocalEmbedder(BaseEmbedder):
     def __init__(self, model_name: str = "BAAI/bge-small-zh-v1.5"):
         try:
             from sentence_transformers import SentenceTransformer
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
-                "sentence-transformers not installed. "
-                "Run: pip install sentence-transformers"
-            )
+                "sentence-transformers not installed. Run: pip install sentence-transformers"
+            ) from e
         logger.info("Loading local embedding model: %s", model_name)
         self.model = SentenceTransformer(model_name)
         logger.info("Local embedding model loaded.")
@@ -60,7 +62,7 @@ class LocalEmbedder(BaseEmbedder):
         if not texts:
             return []
         embeddings = self.model.encode(texts, normalize_embeddings=True)
-        return embeddings.tolist()
+        return list(embeddings.tolist())  # type: ignore[no-any-return]
 
     def embed_query(self, query: str) -> list[float]:
         # BGE models benefit from a query prefix

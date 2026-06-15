@@ -1,0 +1,2 @@
+{"query":"什么是检索增强生成？","relevant_texts":["先从知识库中检索相关文档片段"]}
+{"query":"某个资料中完全没有涉及的问题","expect_no_results":true}

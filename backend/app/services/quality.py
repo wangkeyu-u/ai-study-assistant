@@ -10,14 +10,16 @@ Scoring criteria:
 - Digit/special char ratio (very high = likely page numbers, headers)
 """
 
-import re
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 # Common Chinese stop words (abbreviated)
 STOP_WORDS_ZH = set("的了是在不有我他她它们这那和与或而且如果虽然但是因为所以")
-STOP_WORDS_EN = set("the a an is are was were be been being have has had do does did will would shall should may might can could i you he she it we they me him her us them my your his its our their this that these those and or but not no nor so yet")
+STOP_WORDS_EN = set(
+    "the a an is are was were be been being have has had do does did will would shall should may might can could i you he she it we they me him her us them my your his its our their this that these those and or but not no nor so yet"
+)
 
 
 def score_chunk_quality(text: str) -> dict:
@@ -50,24 +52,28 @@ def score_chunk_quality(text: str) -> dict:
     special_ratio = special_count / text_len
 
     # Rule 4: Repetition detection
-    lines = stripped.split('\n')
-    unique_lines = set(l.strip() for l in lines if l.strip())
+    lines = stripped.split("\n")
+    unique_lines = set(line.strip() for line in lines if line.strip())
     line_repetition = 1 - (len(unique_lines) / max(len(lines), 1))
 
     # Rule 5: Common low-quality patterns
     low_quality_patterns = [
-        r'^\s*目\s*录\s*$',
-        r'^\s*contents?\s*$',
-        r'^\s*copyright',
-        r'^\s*©\s',
-        r'^\s*all rights reserved',
-        r'^\s*isbn[\s\d-]+$',
-        r'^\s*第\s*\d+\s*页',
-        r'^\s*page\s*\d+',
+        r"^\s*目\s*录\s*$",
+        r"^\s*contents?\s*$",
+        r"^\s*copyright",
+        r"^\s*©\s",
+        r"^\s*all rights reserved",
+        r"^\s*isbn[\s\d-]+$",
+        r"^\s*第\s*\d+\s*页",
+        r"^\s*page\s*\d+",
     ]
     for pattern in low_quality_patterns:
         if re.search(pattern, stripped, re.IGNORECASE | re.MULTILINE):
-            return {"info_density": 0.1, "is_low_quality": True, "reason": "匹配低质量模式（目录/版权/页码）"}
+            return {
+                "info_density": 0.1,
+                "is_low_quality": True,
+                "reason": "匹配低质量模式（目录/版权/页码）",
+            }
 
     # Composite score
     score = 0.5  # base score
@@ -94,7 +100,11 @@ def score_chunk_quality(text: str) -> dict:
         else:
             reason = "信息密度低于阈值"
 
-    return {"info_density": round(info_density, 3), "is_low_quality": is_low_quality, "reason": reason}
+    return {
+        "info_density": round(info_density, 3),
+        "is_low_quality": is_low_quality,
+        "reason": reason,
+    }
 
 
 def batch_score_chunks(chunk_texts: list[str]) -> list[dict]:

@@ -78,6 +78,7 @@ def _mask_key(key: str) -> str:
 async def get_api_key_status():
     """Get current API key status (masked)."""
     from app.config import get_settings
+
     settings = get_settings()
 
     key = settings.openai_api_key or _read_env_key("OPENAI_API_KEY")

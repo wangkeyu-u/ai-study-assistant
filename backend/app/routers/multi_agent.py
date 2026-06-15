@@ -1,14 +1,23 @@
-"""Multi-Agent API router — exposes the Supervisor-based chat endpoint."""
+"""Multi-Agent API router — SSE streaming endpoint with Supervisor routing."""
 
 from __future__ import annotations
 
+import json
 import logging
-import uuid
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.db.database import get_connection
+from app.db.database import get_db
+from app.db.session_utils import (
+    delete_empty_session,
+    fetch_history,
+    get_or_create_session,
+    save_assistant_response,
+    save_user_message,
+)
+from app.dependencies import get_rag_pipeline
 from app.services.agents.supervisor import SupervisorAgent
 
 logger = logging.getLogger(__name__)
@@ -26,12 +35,8 @@ def _get_supervisor() -> SupervisorAgent:
     return _supervisor
 
 
-def _get_rag_pipeline():
-    from app.main import rag_pipeline
-    return rag_pipeline
+# ── Request schema ───────────────────────────────────────────────
 
-
-# ── Request / Response schemas ──────────────────────────────────
 
 class MultiAgentChatRequest(BaseModel):
     message: str
@@ -39,98 +44,82 @@ class MultiAgentChatRequest(BaseModel):
     collection_id: str | None = None
 
 
-class MultiAgentChatResponse(BaseModel):
-    content: str
-    agent_name: str
-    session_id: str
-    metadata: dict = {}
+# ── SSE Streaming Endpoint ───────────────────────────────────────
 
 
-# ── Endpoint ────────────────────────────────────────────────────
-
-@router.post("/chat", response_model=MultiAgentChatResponse)
+@router.post("/chat")
 async def multi_agent_chat(request: MultiAgentChatRequest):
-    """Process a message through the Multi-Agent Supervisor system.
+    """Process a message through the Multi-Agent Supervisor system with SSE streaming.
 
-    The Supervisor classifies the user's intent and routes to the best
-    specialist agent (Tutor, Examiner, or Summarizer).
+    The Supervisor classifies intent and routes to the best specialist agent.
+    Response is streamed as Server-Sent Events with: session, token, citations, done.
     """
-    pipeline = _get_rag_pipeline()
+    pipeline = get_rag_pipeline()
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG pipeline not initialized")
 
     supervisor = _get_supervisor()
-    conn = get_connection()
+    is_new_session = request.session_id is None
+    with get_db() as conn:
+        session_id = get_or_create_session(conn, request.session_id, request.message)
+        history = fetch_history(conn, session_id) if request.session_id else []
 
-    try:
-        # ── Session management ─────────────────────────────────
-        if request.session_id:
-            session = conn.execute(
-                "SELECT * FROM chat_sessions WHERE id=?", (request.session_id,)
-            ).fetchone()
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
-            session_id = request.session_id
-        else:
-            session_id = str(uuid.uuid4())
-            title = request.message[:30] + ("..." if len(request.message) > 30 else "")
-            conn.execute(
-                "INSERT INTO chat_sessions (id, title) VALUES (?, ?)",
-                (session_id, title),
-            )
-            conn.commit()
+    # ── SSE Stream generator ───────────────────────────────────
+    async def event_stream():
+        full_content = ""
+        citations_data = []
+        agent_name = ""
+        response_saved = False
 
-        # ── Fetch conversation history ─────────────────────────
-        history: list[dict] = []
-        if request.session_id:
-            rows = conn.execute(
-                "SELECT role, content FROM chat_messages WHERE session_id=? ORDER BY created_at",
-                (session_id,),
-            ).fetchall()
-            history = [{"role": r["role"], "content": r["content"]} for r in rows]
+        try:
+            yield f"event: session\ndata: {json.dumps({'session_id': session_id})}\n\n"
 
-        # ── Save user message ──────────────────────────────────
-        user_msg_id = str(uuid.uuid4())
-        conn.execute(
-            "INSERT INTO chat_messages (id, session_id, role, content) VALUES (?, ?, 'user', ?)",
-            (user_msg_id, session_id, request.message),
-        )
-        conn.commit()
+            async for event in supervisor.route_stream(
+                query=request.message,
+                pipeline=pipeline,
+                history=history,
+                collection_id=request.collection_id,
+            ):
+                event_type = event.get("type")
 
-    finally:
-        conn.close()
+                if event_type == "token":
+                    full_content += event.get("text", "")
+                    yield f"event: token\ndata: {json.dumps({'text': event['text']}, ensure_ascii=False)}\n\n"
 
-    # ── Route through Supervisor ────────────────────────────────
-    try:
-        agent_response = await supervisor.route(
-            query=request.message,
-            pipeline=pipeline,
-            history=history,
-            collection_id=request.collection_id,
-        )
-    except Exception as e:
-        logger.exception("Multi-agent processing failed")
-        raise HTTPException(status_code=500, detail=f"Multi-agent processing failed: {e}")
+                elif event_type == "citations":
+                    citations_data = event.get("citations", [])
+                    yield f"event: citations\ndata: {json.dumps(citations_data, ensure_ascii=False)}\n\n"
 
-    # ── Save assistant message ─────────────────────────────────
-    assistant_msg_id = str(uuid.uuid4())
-    conn = get_connection()
-    try:
-        conn.execute(
-            "INSERT INTO chat_messages (id, session_id, role, content) VALUES (?, ?, 'assistant', ?)",
-            (assistant_msg_id, session_id, agent_response.content),
-        )
-        conn.execute(
-            "UPDATE chat_sessions SET message_count = message_count + 2, updated_at = CURRENT_TIMESTAMP WHERE id=?",
-            (session_id,),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+                elif event_type == "done":
+                    agent_name = event.get("agent_name", "")
 
-    return MultiAgentChatResponse(
-        content=agent_response.content,
-        agent_name=agent_response.agent_name,
-        session_id=session_id,
-        metadata=agent_response.metadata,
+            # Persist the complete turn only after the agent finishes successfully.
+            with get_db() as conn:
+                save_user_message(conn, session_id, request.message)
+                assistant_msg_id = save_assistant_response(
+                    conn, session_id, full_content, citations_data
+                )
+                response_saved = True
+
+            # Final done event
+            yield f"event: done\ndata: {json.dumps({'message_id': assistant_msg_id, 'agent_name': agent_name, 'citations_count': len(citations_data)}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            logger.exception("Multi-agent streaming failed")
+            error_message = f"处理请求时出错: {e}"
+            yield f"event: error\ndata: {json.dumps({'error': error_message}, ensure_ascii=False)}\n\n"
+            yield f"event: done\ndata: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            if is_new_session and not response_saved:
+                with get_db() as conn:
+                    delete_empty_session(conn, session_id)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )

@@ -11,10 +11,7 @@ export default function DebugPanel({ debugInfo, onClose }: DebugPanelProps) {
       {/* Header */}
       <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-orange-50">
         <h3 className="text-sm font-semibold text-orange-800">RAG Debug Panel</h3>
-        <button
-          onClick={onClose}
-          className="text-orange-600 hover:text-orange-800 text-sm"
-        >
+        <button onClick={onClose} className="text-orange-600 hover:text-orange-800 text-sm">
           ✕
         </button>
       </div>
@@ -35,8 +32,21 @@ export default function DebugPanel({ debugInfo, onClose }: DebugPanelProps) {
 
             {/* Embedding Model */}
             <section>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Embedding Model</h4>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                Embedding Model
+              </h4>
               <p className="text-sm text-gray-700">{debugInfo.embedding_model}</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Retrieval: {debugInfo.retrieval_mode || 'vector'}
+              </p>
+              {debugInfo.confidence_rejected && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Confidence gate rejected
+                  {debugInfo.confidence_score != null
+                    ? ` (${debugInfo.confidence_score.toFixed(3)})`
+                    : ''}
+                </p>
+              )}
             </section>
 
             {/* Performance */}
@@ -45,11 +55,17 @@ export default function DebugPanel({ debugInfo, onClose }: DebugPanelProps) {
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs text-gray-500">检索耗时</p>
-                  <p className="text-lg font-semibold text-gray-800">{debugInfo.retrieval_time_ms.toFixed(0)}<span className="text-xs font-normal text-gray-400">ms</span></p>
+                  <p className="text-lg font-semibold text-gray-800">
+                    {debugInfo.retrieval_time_ms.toFixed(0)}
+                    <span className="text-xs font-normal text-gray-400">ms</span>
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs text-gray-500">生成耗时</p>
-                  <p className="text-lg font-semibold text-gray-800">{debugInfo.generation_time_ms.toFixed(0)}<span className="text-xs font-normal text-gray-400">ms</span></p>
+                  <p className="text-lg font-semibold text-gray-800">
+                    {debugInfo.generation_time_ms.toFixed(0)}
+                    <span className="text-xs font-normal text-gray-400">ms</span>
+                  </p>
                 </div>
               </div>
             </section>
@@ -60,15 +76,21 @@ export default function DebugPanel({ debugInfo, onClose }: DebugPanelProps) {
               <div className="grid grid-cols-3 gap-2">
                 <div className="bg-gray-50 rounded-lg p-2 text-center">
                   <p className="text-xs text-gray-500">Prompt</p>
-                  <p className="text-sm font-semibold text-gray-800">{debugInfo.token_usage.prompt_tokens}</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {debugInfo.token_usage.prompt_tokens}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-2 text-center">
                   <p className="text-xs text-gray-500">Completion</p>
-                  <p className="text-sm font-semibold text-gray-800">{debugInfo.token_usage.completion_tokens}</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {debugInfo.token_usage.completion_tokens}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-2 text-center">
                   <p className="text-xs text-gray-500">Total</p>
-                  <p className="text-sm font-semibold text-gray-800">{debugInfo.token_usage.total_tokens}</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {debugInfo.token_usage.total_tokens}
+                  </p>
                 </div>
               </div>
             </section>
@@ -85,16 +107,37 @@ export default function DebugPanel({ debugInfo, onClose }: DebugPanelProps) {
                       <span className="text-xs font-medium text-gray-700">
                         [{i + 1}] {chunk.doc_name}
                       </span>
-                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                        chunk.similarity_score >= 0.7 ? 'bg-green-100 text-green-700' :
-                        chunk.similarity_score >= 0.5 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
+                      <span
+                        className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                          chunk.similarity_score >= 0.7
+                            ? 'bg-green-100 text-green-700'
+                            : chunk.similarity_score >= 0.5
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-red-100 text-red-700'
+                        }`}
+                      >
                         {(chunk.similarity_score * 100).toFixed(1)}%
                       </span>
                     </div>
                     {chunk.page_num && (
                       <p className="text-xs text-gray-400 mb-1">Page {chunk.page_num}</p>
+                    )}
+                    {chunk.retrieval_sources && chunk.retrieval_sources.length > 0 && (
+                      <div className="flex gap-1 mb-1.5">
+                        {chunk.retrieval_sources.map((source) => (
+                          <span
+                            key={source}
+                            className="text-[10px] uppercase bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded"
+                          >
+                            {source}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {chunk.rerank_score != null && (
+                      <p className="text-[10px] text-purple-600 mb-1">
+                        Rerank: {chunk.rerank_score.toFixed(4)}
+                      </p>
                     )}
                     <p className="text-xs text-gray-600 leading-relaxed">{chunk.text_preview}...</p>
                   </div>

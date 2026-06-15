@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 @dataclass
 class ParsedSegment:
     """A segment of parsed text with optional metadata."""
+
     text: str
     page_num: int | None = None
     heading: str | None = None
@@ -17,6 +18,7 @@ class ParsedSegment:
 @dataclass
 class ParseResult:
     """Result of parsing a document file."""
+
     segments: list[ParsedSegment] = field(default_factory=list)
     error: str | None = None
 
@@ -37,7 +39,7 @@ class DocumentParser:
             "pdf": self._parse_pdf,
             "txt": self._parse_txt,
             "md": self._parse_markdown,
-            "note": self._parse_txt,       # notes use the same plain-text parser
+            "note": self._parse_txt,  # notes use the same plain-text parser
         }
         parser_fn = parsers.get(file_type)
         if parser_fn is None:
@@ -55,19 +57,19 @@ class DocumentParser:
     def _parse_pdf(self, file_path: str) -> ParseResult:
         import fitz  # PyMuPDF
 
-        doc = fitz.open(file_path)
-        segments: list[ParsedSegment] = []
+        with fitz.open(file_path) as doc:
+            segments: list[ParsedSegment] = []
 
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            text = page.get_text("text")
-            if text.strip():
-                segments.append(ParsedSegment(
-                    text=text.strip(),
-                    page_num=page_num + 1,
-                ))
-
-        doc.close()
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                text = page.get_text("text")
+                if text.strip():
+                    segments.append(
+                        ParsedSegment(
+                            text=text.strip(),
+                            page_num=page_num + 1,
+                        )
+                    )
 
         if not segments:
             return ParseResult(error="该 PDF 为扫描版或内容为空，暂不支持 OCR，请上传文字版 PDF")
@@ -77,7 +79,7 @@ class DocumentParser:
     # ── TXT ────────────────────────────────────────────────
 
     def _parse_txt(self, file_path: str) -> ParseResult:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
             text = f.read()
 
         if not text.strip():
@@ -88,7 +90,7 @@ class DocumentParser:
     # ── Markdown ───────────────────────────────────────────
 
     def _parse_markdown(self, file_path: str) -> ParseResult:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
             text = f.read()
 
         if not text.strip():
@@ -105,10 +107,12 @@ class DocumentParser:
                 if current_lines:
                     block = "\n".join(current_lines).strip()
                     if block:
-                        segments.append(ParsedSegment(
-                            text=block,
-                            heading=current_heading,
-                        ))
+                        segments.append(
+                            ParsedSegment(
+                                text=block,
+                                heading=current_heading,
+                            )
+                        )
                 current_heading = heading_match.group(2).strip()
                 current_lines = []
             else:
@@ -118,10 +122,12 @@ class DocumentParser:
         if current_lines:
             block = "\n".join(current_lines).strip()
             if block:
-                segments.append(ParsedSegment(
-                    text=block,
-                    heading=current_heading,
-                ))
+                segments.append(
+                    ParsedSegment(
+                        text=block,
+                        heading=current_heading,
+                    )
+                )
 
         # If no headings found, treat entire file as one segment
         if not segments:

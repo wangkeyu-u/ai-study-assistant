@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from typing import Optional
 
 from app.services.knowledge_graph import build_graph, get_graph_data, get_related_concepts
 
@@ -10,7 +9,7 @@ router = APIRouter(prefix="/api/knowledge-graph", tags=["knowledge-graph"])
 
 
 class BuildRequest(BaseModel):
-    doc_ids: Optional[list[str]] = None
+    doc_ids: list[str] | None = None
 
 
 @router.post("/build")
@@ -26,7 +25,9 @@ async def build_knowledge_graph(request: BuildRequest):
 
 
 @router.get("")
-async def get_graph(doc_ids: Optional[str] = Query(None, description="Comma-separated document IDs")):
+async def get_graph(
+    doc_ids: str | None = Query(None, description="Comma-separated document IDs"),
+):
     """Get knowledge graph data for visualization."""
     doc_id_list = None
     if doc_ids:

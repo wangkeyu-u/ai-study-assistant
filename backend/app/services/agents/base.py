@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 
 
@@ -40,3 +41,21 @@ class BaseAgent(ABC):
             An AgentResponse with content and metadata.
         """
         ...  # pragma: no cover
+
+    async def process_stream(
+        self, query: str, context: dict | None = None
+    ) -> AsyncGenerator[dict, None]:
+        """Stream the agent's response, yielding token/citation/done events.
+
+        Default implementation wraps the non-streaming process() method:
+        renders the full response as a single token event then a done event.
+        Subclasses can override for true streaming with citation extraction.
+        """
+        response = await self.process(query, context)
+        yield {"type": "token", "text": response.content}
+        yield {
+            "type": "done",
+            "agent_name": response.agent_name,
+            "content": response.content,
+            "metadata": response.metadata,
+        }

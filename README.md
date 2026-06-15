@@ -6,6 +6,7 @@
 
 - **资料即知识库**：上传 PDF/Markdown/TXT，自动解析、分块、建立向量索引
 - **问答有据可依**：每个回答标注来源文档、页码、chunk 编号，点击查看原文
+- **混合检索**：ChromaDB 向量召回 + SQLite FTS5 关键词召回，通过 RRF 融合排序
 - **Multi-Agent 智能路由**：Supervisor 自动判断意图，分配给 Tutor/Examiner/Summarizer
 - **知识图谱可视化**：自动提取概念和关系，D3.js 交互式展示
 - **学习闭环**：上传 → 提问 → 测验 → 错题复习 → Anki 导出
@@ -69,7 +70,19 @@ npm run dev
 
 ### 使用本地模型（可选）
 
-如果不想使用 OpenAI API，可以用 Ollama 本地部署：
+本地 embedding 和 reranker 需要额外安装 PyTorch / sentence-transformers：
+
+```bash
+cd backend
+pip install -r requirements-local.txt
+
+# 修改 .env
+ASA_EMBEDDING_PROVIDER=local
+ASA_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+ASA_EMBEDDING_DIMENSION=512
+```
+
+如果不想使用云端 LLM API，可以用 Ollama 本地部署：
 
 ```bash
 # 安装 Ollama: https://ollama.com
@@ -96,7 +109,7 @@ ASA_OLLAMA_BASE_URL=http://localhost:11434/v1
 │   │   │   ├── chunker.py          文本分块（段落感知 + overlap）
 │   │   │   ├── embedder.py         Embedding 生成
 │   │   │   ├── vectorstore.py      ChromaDB 向量存储
-│   │   │   ├── retriever.py        向量检索 + 质量调整
+│   │   │   ├── retriever.py        Vector + FTS5 + RRF 混合检索
 │   │   │   ├── generator.py        LLM 生成 + SSE streaming
 │   │   │   ├── rag.py              RAG 流程编排（7步ingest）
 │   │   │   ├── quality.py          Chunk 质量评分
@@ -162,7 +175,7 @@ ASA_OLLAMA_BASE_URL=http://localhost:11434/v1
 | 2 | 多轮对话 + query rewrite + 笔记总结 + 标签分类 | ✅ |
 | 2.5 | 知识库分组 + 备份恢复 + Markdown 导出 | ✅ |
 | 3 | 测验生成 + 错题本 + Anki 导出 + 学习看板 | ✅ |
-| 4 | FTS5 历史搜索 + Chunk 质量评分 + PDF 图片提取 | ✅ |
+| 4 | 混合检索 + FTS5 历史搜索 + Chunk 质量评分 + PDF 图片提取 | ✅ |
 | 5 | 知识图谱（NER + 共现分析 + D3.js 可视化） | ✅ |
 | 6 | Multi-Agent（Supervisor + Tutor/Examiner/Summarizer） | ✅ |
 
@@ -179,6 +192,72 @@ ASA_OLLAMA_BASE_URL=http://localhost:11434/v1
 - **知识图谱**：构建、查询、相关概念
 - **Multi-Agent**：智能路由对话
 - **备份**：导出、导入、Markdown 导出
+
+## 开发工具
+
+### 后端
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Lint 检查
+ruff check app/
+
+# 格式化
+ruff format app/
+
+# 类型检查
+mypy app/
+
+# 运行测试
+pytest tests/ -v
+```
+
+### 检索质量评测
+
+复制示例 JSONL，并把相关文档名、文档 ID 或 chunk ID 替换为真实标注：
+
+```bash
+cd backend
+cp eval/retrieval.example.jsonl eval/retrieval.jsonl
+
+# 同时比较纯向量检索和混合检索
+python -m app.evaluation.retrieval \
+  --dataset eval/retrieval.golden.jsonl \
+  --modes vector hybrid \
+  --k 1 3 5 \
+  --output /tmp/retrieval-report.json \
+  --summary-output eval/retrieval.baseline.summary.json
+```
+
+命令输出 `Hit@K`、`MRR`、`Recall@K`、无答案拒答准确率和检索延迟。评测只运行召回层，不调用回答生成模型。完整报告可能包含本地文档名，建议输出到临时目录；摘要报告不含逐条召回结果，可以提交到仓库。
+
+当前黄金集、基线结果和质量门槛见 [docs/EVALUATION.md](docs/EVALUATION.md)。
+
+### 前端
+
+```bash
+cd frontend
+
+# ESLint 检查
+npm run lint
+
+# Prettier 格式化
+npm run format
+
+# 运行测试
+npm run test
+```
+
+### CI/CD
+
+项目使用 GitHub Actions 进行持续集成，每次 push 到 main 或 PR 时自动运行：
+
+- **后端**：ruff lint → ruff format → mypy → pytest
+- **前端**：ESLint → Prettier → Vitest → Production Build
+
+详见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## License
 

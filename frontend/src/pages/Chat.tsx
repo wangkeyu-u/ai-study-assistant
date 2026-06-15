@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ChatSession,
   ChatMessage,
@@ -6,13 +7,13 @@ import {
   Collection,
   DebugInfo,
   HistorySearchResult,
-  MultiAgentResponse,
   listSessions,
   getSessionMessages,
   deleteSession,
   listCollections,
   exportMessageAsMarkdown,
   searchHistory,
+  sendChatMessage,
   sendMultiAgentChat,
 } from '../api';
 import DebugPanel from '../components/DebugPanel';
@@ -23,13 +24,13 @@ interface MessageWithCitations extends ChatMessage {
 }
 
 export default function ChatPage() {
+  const { t } = useTranslation();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageWithCitations[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState('');
-  const [streamingCitations, setStreamingCitations] = useState<Citation[]>([]);
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [expandedCitation, setExpandedCitation] = useState<string | null>(null);
@@ -39,6 +40,7 @@ export default function ChatPage() {
   const [searchResults, setSearchResults] = useState<HistorySearchResult[]>([]);
   const [smartMode, setSmartMode] = useState(false);
   const [agentName, setAgentName] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -56,7 +58,9 @@ export default function ChatPage() {
   }, [fetchSessions]);
 
   useEffect(() => {
-    listCollections().then(setChatCollections).catch(() => {});
+    listCollections()
+      .then(setChatCollections)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -77,14 +81,14 @@ export default function ChatPage() {
     setCurrentSessionId(null);
     setMessages([]);
     setStreamingText('');
-    setStreamingCitations([]);
     setDebugInfo(null);
     setAgentName('');
+    setErrorMessage(null);
     inputRef.current?.focus();
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm('确认删除此会话？')) return;
+    if (!confirm(t('chat.confirmDelete'))) return;
     try {
       await deleteSession(sessionId);
       if (currentSessionId === sessionId) {
@@ -96,37 +100,6 @@ export default function ChatPage() {
     }
   };
 
-  const handleSendMultiAgent = async (message: string) => {
-    try {
-      const res: MultiAgentResponse = await sendMultiAgentChat(message, currentSessionId || undefined);
-      setAgentName(res.agent_name);
-
-      const userMsg: MessageWithCitations = {
-        id: `temp-${Date.now()}`,
-        role: 'user',
-        content: message,
-        citations: [],
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-
-      const assistantMsg: MessageWithCitations = {
-        id: `msg-${Date.now()}`,
-        role: 'assistant',
-        content: res.content,
-        citations: [],
-        created_at: new Date().toISOString(),
-        agentName: res.agent_name,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-      await fetchSessions();
-    } catch (e: any) {
-      setStreamingText(`发送失败: ${e.message}`);
-    } finally {
-      setSending(false);
-    }
-  };
-
   const handleSend = async () => {
     const message = input.trim();
     if (!message || sending) return;
@@ -134,19 +107,14 @@ export default function ChatPage() {
     setInput('');
     setSending(true);
     setStreamingText('');
-    setStreamingCitations([]);
     setDebugInfo(null);
     setAgentName('');
+    setErrorMessage(null);
 
-    // Smart Mode: use Multi-Agent API
-    if (smartMode) {
-      await handleSendMultiAgent(message);
-      return;
-    }
-
-    // Add user message to local state
+    const previousSessionId = currentSessionId;
+    const tempMessageId = `temp-${Date.now()}`;
     const userMsg: MessageWithCitations = {
-      id: `temp-${Date.now()}`,
+      id: tempMessageId,
       role: 'user',
       content: message,
       citations: [],
@@ -155,86 +123,42 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: currentSessionId,
-          message: message,
-          collection_id: chatCollectionId,
-        }),
-      });
+      const handlers = {
+        onToken: (text: string) => setStreamingText((prev) => prev + text),
+        onSessionId: (id: string) => setCurrentSessionId(id),
+        onDebug: (debug: DebugInfo) => setDebugInfo(debug),
+      };
+      const result = smartMode
+        ? await sendMultiAgentChat(
+            message,
+            currentSessionId || undefined,
+            chatCollectionId,
+            handlers
+          )
+        : await sendChatMessage(message, currentSessionId || undefined, chatCollectionId, handlers);
 
-      if (!res.ok) {
-        throw new Error('请求失败');
+      setStreamingText('');
+      if (result.content) {
+        const assistantMsg: MessageWithCitations = {
+          id: result.messageId || `msg-${Date.now()}`,
+          role: 'assistant',
+          content: result.content,
+          citations: result.citations,
+          created_at: new Date().toISOString(),
+          agentName: result.agentName,
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
       }
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error('No response stream');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let currentEvent = '';
-      let newSessionId = currentSessionId;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-
-              switch (currentEvent) {
-                case 'session':
-                  newSessionId = data.session_id;
-                  setCurrentSessionId(newSessionId);
-                  break;
-                case 'token':
-                  setStreamingText((prev) => prev + data.text);
-                  break;
-                case 'citations':
-                  setStreamingCitations(data);
-                  break;
-                case 'debug':
-                  setDebugInfo(data);
-                  break;
-                case 'done':
-                  break;
-              }
-            } catch {
-              // skip malformed JSON
-            }
-          }
-        }
-      }
-
-      // Finalize: add assistant message to history
-      setStreamingText((fullText) => {
-        if (fullText) {
-          const assistantMsg: MessageWithCitations = {
-            id: `msg-${Date.now()}`,
-            role: 'assistant',
-            content: fullText,
-            citations: streamingCitations,
-            created_at: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, assistantMsg]);
-        }
-        return '';
-      });
+      setAgentName(result.agentName || '');
 
       await fetchSessions();
-
-    } catch (e: any) {
-      setStreamingText(`发送失败: ${e.message}`);
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setMessages((prev) => prev.filter((item) => item.id !== tempMessageId));
+      setCurrentSessionId(previousSessionId);
+      setStreamingText('');
+      setInput(message);
+      setErrorMessage(`${t('chat.sendFailed')}: ${detail}`);
     } finally {
       setSending(false);
     }
@@ -249,17 +173,21 @@ export default function ChatPage() {
 
   const getAgentBadgeColor = (name: string) => {
     const lower = name.toLowerCase();
-    if (lower.includes('tutor') || lower.includes('teacher')) return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-    if (lower.includes('examiner') || lower.includes('quiz')) return 'bg-amber-100 text-amber-700 border-amber-200';
-    if (lower.includes('summarizer') || lower.includes('summary')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (lower.includes('analyst') || lower.includes('analysis')) return 'bg-purple-100 text-purple-700 border-purple-200';
+    if (lower.includes('tutor') || lower.includes('teacher'))
+      return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+    if (lower.includes('examiner') || lower.includes('quiz'))
+      return 'bg-amber-100 text-amber-700 border-amber-200';
+    if (lower.includes('summarizer') || lower.includes('summary'))
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (lower.includes('analyst') || lower.includes('analysis'))
+      return 'bg-purple-100 text-purple-700 border-purple-200';
     return 'bg-slate-100 text-slate-700 border-slate-200';
   };
 
   return (
-    <div className="h-full flex">
+    <div className="spell-page chat-workspace h-full flex">
       {/* Session sidebar */}
-      <div className="w-64 bg-gradient-to-b from-slate-50 to-white border-r border-gray-200 flex flex-col">
+      <div className="chat-rail w-64 border-r border-gray-200 flex flex-col">
         {/* Collection filter for search scope */}
         <div className="p-3 border-b border-gray-200">
           <select
@@ -267,21 +195,25 @@ export default function ChatPage() {
             onChange={(e) => setChatCollectionId(e.target.value || null)}
             className="w-full text-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
-            <option value="">全部知识库</option>
+            <option value="">{t('chat.allKnowledgeBases')}</option>
             {chatCollections.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
             ))}
           </select>
         </div>
         <div className="p-3 border-b border-gray-200">
           <input
             type="text"
-            placeholder="搜索历史对话..."
+            placeholder={t('chat.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
               if (e.target.value.length >= 2) {
-                searchHistory(e.target.value).then(setSearchResults).catch(() => {});
+                searchHistory(e.target.value)
+                  .then(setSearchResults)
+                  .catch(() => {});
               } else {
                 setSearchResults([]);
               }
@@ -290,7 +222,7 @@ export default function ChatPage() {
           />
           {searchResults.length > 0 && (
             <div className="mt-2 max-h-40 overflow-auto space-y-1">
-              {searchResults.map(r => (
+              {searchResults.map((r) => (
                 <button
                   key={r.message_id}
                   onClick={() => {
@@ -310,16 +242,16 @@ export default function ChatPage() {
         <div className="p-3 border-b border-gray-200">
           <button
             onClick={handleNewChat}
-            className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg text-sm hover:from-blue-700 hover:to-blue-600 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+            className="spell-button w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-500 text-white rounded-lg text-sm hover:from-blue-700 hover:to-indigo-600 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
           >
-            + 新对话
+            {t('chat.newChat')}
           </button>
         </div>
         <div className="flex-1 overflow-auto p-2 space-y-0.5">
           {sessions.length === 0 && (
             <div className="text-center py-8 text-gray-400 text-xs">
-              <p>暂无对话记录</p>
-              <p className="mt-1">点击上方按钮开始新对话</p>
+              <p>{t('chat.noConversations')}</p>
+              <p className="mt-1">{t('chat.noConversationsHint')}</p>
             </div>
           )}
           {sessions.map((s) => (
@@ -331,10 +263,7 @@ export default function ChatPage() {
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800 border border-transparent'
               }`}
             >
-              <span
-                className="truncate flex-1"
-                onClick={() => loadSession(s.id)}
-              >
+              <span className="truncate flex-1" onClick={() => loadSession(s.id)}>
                 {s.title}
               </span>
               <button
@@ -352,20 +281,26 @@ export default function ChatPage() {
       </div>
 
       {/* Chat area */}
-      <div className="flex-1 flex flex-col relative bg-gradient-to-b from-gray-50/50 to-white">
+      <div className="chat-stage flex-1 flex flex-col relative">
         {/* Messages */}
-        <div className="flex-1 overflow-auto p-6 space-y-5">
+        <div className="chat-scroll flex-1 overflow-auto p-6 space-y-5">
           {messages.length === 0 && !streamingText && (
             <div className="flex items-center justify-center h-full">
               <div className="text-center max-w-sm">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center">
-                  <span className="text-3xl">💬</span>
+                <div className="knowledge-orbit" aria-hidden="true">
+                  <div className="knowledge-core">
+                    <span>AI</span>
+                  </div>
                 </div>
-                <p className="text-gray-600 font-medium mb-2">开始智能对话</p>
-                <p className="text-sm text-gray-400 leading-relaxed">上传学习资料后，在这里提问。每个回答都会标注引用来源。</p>
+                <p className="text-gray-600 font-medium mb-2">{t('chat.startChat')}</p>
+                <p className="text-sm text-gray-400 leading-relaxed">{t('chat.startChatHint')}</p>
                 <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">
-                  <span className="px-2 py-1 bg-gray-100 rounded-full">Enter 发送</span>
-                  <span className="px-2 py-1 bg-gray-100 rounded-full">Shift+Enter 换行</span>
+                  <span className="px-2 py-1 bg-gray-100 rounded-full">
+                    {t('chat.enterToSend')}
+                  </span>
+                  <span className="px-2 py-1 bg-gray-100 rounded-full">
+                    {t('chat.shiftEnterBreak')}
+                  </span>
                 </div>
               </div>
             </div>
@@ -376,15 +311,19 @@ export default function ChatPage() {
               key={msg.id}
               className={`message-enter flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`max-w-[75%] ${
-                msg.role === 'user'
-                  ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-2xl rounded-tr-md px-5 py-3.5 shadow-md'
-                  : 'bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-3.5 shadow-sm'
-              }`}>
+              <div
+                className={`max-w-[75%] ${
+                  msg.role === 'user'
+                    ? 'message-bubble message-bubble-user bg-gradient-to-br from-blue-600 to-indigo-500 text-white rounded-2xl rounded-tr-md px-5 py-3.5 shadow-md'
+                    : 'message-bubble message-bubble-assistant bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-3.5 shadow-sm'
+                }`}
+              >
                 {/* Agent badge */}
                 {msg.role === 'assistant' && msg.agentName && (
                   <div className="mb-2">
-                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${getAgentBadgeColor(msg.agentName)}`}>
+                    <span
+                      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${getAgentBadgeColor(msg.agentName)}`}
+                    >
                       <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60"></span>
                       {msg.agentName}
                     </span>
@@ -396,30 +335,40 @@ export default function ChatPage() {
                 {/* Citations */}
                 {msg.role === 'assistant' && msg.citations.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-2">引用来源：</p>
+                    <p className="text-xs text-gray-400 mb-2">{t('chat.citations')}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {msg.citations.map((c, i) => (
                         <button
                           key={i}
-                          onClick={() => setExpandedCitation(
-                            expandedCitation === `${msg.id}-${i}` ? null : `${msg.id}-${i}`
-                          )}
+                          onClick={() =>
+                            setExpandedCitation(
+                              expandedCitation === `${msg.id}-${i}` ? null : `${msg.id}-${i}`
+                            )
+                          }
                           className="text-xs bg-gray-50 hover:bg-blue-50 text-gray-600 hover:text-blue-700 px-2 py-1 rounded-md transition-all duration-200 border border-transparent hover:border-blue-200"
                         >
-                          [{i + 1}] {c.doc_name}{c.page_num ? ` p.${c.page_num}` : ''}
+                          [{i + 1}] {c.doc_name}
+                          {c.page_num ? ` p.${c.page_num}` : ''}
                         </button>
                       ))}
                     </div>
-                    {msg.citations.map((c, i) => (
-                      expandedCitation === `${msg.id}-${i}` && (
-                        <div key={`expand-${i}`} className="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 leading-relaxed border border-gray-100">
-                          <p className="font-medium text-gray-700 mb-1">
-                            {c.doc_name}{c.page_num ? ` · 第${c.page_num}页` : ''} · 块 #{c.chunk_index}
-                          </p>
-                          <p>{c.text_preview}</p>
-                        </div>
-                      )
-                    ))}
+                    {msg.citations.map(
+                      (c, i) =>
+                        expandedCitation === `${msg.id}-${i}` && (
+                          <div
+                            key={`expand-${i}`}
+                            className="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 leading-relaxed border border-gray-100"
+                          >
+                            <p className="font-medium text-gray-700 mb-1">
+                              {c.doc_name}
+                              {c.page_num
+                                ? ` · ${t('chat.page', { page: c.page_num })}`
+                                : ''} · {t('chat.chunk', { index: c.chunk_index })}
+                            </p>
+                            <p>{c.text_preview}</p>
+                          </div>
+                        )
+                    )}
                   </div>
                 )}
 
@@ -428,9 +377,9 @@ export default function ChatPage() {
                     <button
                       onClick={() => exportMessageAsMarkdown(msg.id)}
                       className="text-xs text-gray-400 hover:text-blue-600 transition-colors"
-                      title="导出为 Markdown 文件"
+                      title={t('chat.exportMDTitle')}
                     >
-                      导出 MD
+                      {t('chat.exportMD')}
                     </button>
                   </div>
                 )}
@@ -441,11 +390,11 @@ export default function ChatPage() {
           {/* Streaming text with typing indicator */}
           {sending && !streamingText && (
             <div className="message-enter flex justify-start">
-              <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-4 shadow-sm">
-                <div className="typing-indicator flex items-center gap-1.5">
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              <div className="message-bubble message-bubble-assistant bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-4 shadow-sm">
+                <div className="thinking-orbit" aria-label={t('common.loading')}>
+                  <span />
+                  <span />
+                  <span />
                 </div>
               </div>
             </div>
@@ -453,10 +402,12 @@ export default function ChatPage() {
 
           {streamingText && (
             <div className="message-enter flex justify-start">
-              <div className="max-w-[75%] bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-3.5 shadow-sm">
+              <div className="message-bubble message-bubble-assistant max-w-[75%] bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-3.5 shadow-sm">
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
                   {streamingText}
-                  {sending && <span className="typing-cursor inline-block w-0.5 h-4 bg-blue-500 ml-0.5 align-middle animate-pulse"></span>}
+                  {sending && (
+                    <span className="typing-cursor inline-block w-0.5 h-4 bg-blue-500 ml-0.5 align-middle animate-pulse"></span>
+                  )}
                 </p>
               </div>
             </div>
@@ -466,7 +417,20 @@ export default function ChatPage() {
         </div>
 
         {/* Input area */}
-        <div className="p-4 border-t border-gray-200 bg-white">
+        <div className="composer-dock p-4 border-t border-gray-200 bg-white">
+          {/* Error banner */}
+          {errorMessage && (
+            <div className="mb-3 flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+              <span className="flex-1">{errorMessage}</span>
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="text-red-400 hover:text-red-600 transition-colors px-1"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Smart Mode Toggle */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
@@ -482,8 +446,10 @@ export default function ChatPage() {
                   }`}
                 />
               </button>
-              <span className={`text-xs font-medium transition-colors duration-200 ${smartMode ? 'text-indigo-600' : 'text-gray-400'}`}>
-                智能模式
+              <span
+                className={`text-xs font-medium transition-colors duration-200 ${smartMode ? 'text-indigo-600' : 'text-gray-400'}`}
+              >
+                {t('chat.smartMode')}
               </span>
               {smartMode && (
                 <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-full border border-indigo-100">
@@ -492,24 +458,23 @@ export default function ChatPage() {
               )}
             </div>
             {agentName && smartMode && (
-              <span className={`text-xs px-2.5 py-1 rounded-full border ${getAgentBadgeColor(agentName)}`}>
-                上次回答: {agentName}
+              <span
+                className={`text-xs px-2.5 py-1 rounded-full border ${getAgentBadgeColor(agentName)}`}
+              >
+                {t('chat.lastResponse')}: {agentName}
               </span>
             )}
           </div>
 
-          <div className="flex gap-2 items-end">
+          <div className="composer-shell flex gap-2 items-end">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={smartMode
-                ? "智能模式已开启 — 输入你的问题... (Enter 发送)"
-                : "输入你的问题... (Enter 发送, Shift+Enter 换行)"
-              }
+              placeholder={smartMode ? t('chat.smartModePlaceholder') : t('chat.inputPlaceholder')}
               rows={1}
-              className={`flex-1 px-4 py-3 border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 ${
+              className={`spell-input flex-1 px-4 py-3 border-0 rounded-xl text-sm resize-none focus:outline-none focus:ring-0 transition-all duration-200 ${
                 smartMode
                   ? 'border-indigo-200 focus:ring-indigo-400 bg-indigo-50/30'
                   : 'border-gray-200 focus:ring-blue-500 bg-white'
@@ -519,18 +484,20 @@ export default function ChatPage() {
             <button
               onClick={handleSend}
               disabled={sending || !input.trim()}
-              className={`px-5 py-3 text-white rounded-xl text-sm disabled:opacity-50 transition-all duration-200 whitespace-nowrap shadow-sm hover:shadow-md font-medium ${
+              className={`spell-button px-5 py-3 text-white rounded-xl text-sm disabled:opacity-50 transition-all duration-200 whitespace-nowrap shadow-sm hover:shadow-md font-medium ${
                 smartMode
                   ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
                   : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600'
               }`}
             >
-              {sending ? '生成中...' : '发送'}
+              {sending ? t('common.sending') : t('common.send')}
             </button>
             <button
               onClick={() => setShowDebug(!showDebug)}
               className={`px-3 py-3 rounded-xl text-sm transition-all duration-200 whitespace-nowrap ${
-                showDebug ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'
+                showDebug
+                  ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'
               }`}
               title="RAG Debug Panel"
             >
@@ -541,9 +508,7 @@ export default function ChatPage() {
       </div>
 
       {/* Debug Panel */}
-      {showDebug && (
-        <DebugPanel debugInfo={debugInfo} onClose={() => setShowDebug(false)} />
-      )}
+      {showDebug && <DebugPanel debugInfo={debugInfo} onClose={() => setShowDebug(false)} />}
     </div>
   );
 }

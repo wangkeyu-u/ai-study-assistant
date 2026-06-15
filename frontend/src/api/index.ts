@@ -1,4 +1,24 @@
+import i18n from '../i18n';
+
 const BASE_URL = '/api';
+
+export function getApiErrorMessage(key: string): string {
+  return i18n.t(key);
+}
+
+export function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+/** Fetch a URL and parse JSON, throwing on HTTP errors. */
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: '' }));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -71,12 +91,20 @@ export interface ChatMessage {
 export interface DebugInfo {
   query: string;
   embedding_model: string;
+  retrieval_mode?: string;
+  confidence_rejected?: boolean;
+  confidence_score?: number | null;
+  rejection_reason?: string | null;
   top_k_chunks: {
     chunk_id: string;
     text_preview: string;
     similarity_score: number;
     doc_name: string;
     page_num?: number | null;
+    vector_score?: number | null;
+    lexical_score?: number | null;
+    rerank_score?: number | null;
+    retrieval_sources?: string[];
   }[];
   token_usage: {
     prompt_tokens: number;
@@ -85,6 +113,22 @@ export interface DebugInfo {
   };
   retrieval_time_ms: number;
   generation_time_ms: number;
+}
+
+export interface ChatStreamResult {
+  content: string;
+  citations: Citation[];
+  sessionId?: string;
+  messageId?: string;
+  agentName?: string;
+  debug?: DebugInfo;
+}
+
+export interface ChatStreamHandlers {
+  onToken?: (text: string) => void;
+  onCitations?: (citations: Citation[]) => void;
+  onDebug?: (debug: DebugInfo) => void;
+  onSessionId?: (id: string) => void;
 }
 
 // ── Document API ─────────────────────────────────────────
@@ -99,38 +143,39 @@ export async function uploadDocument(file: File, collectionId?: string): Promise
     body: formData,
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: '上传失败' }));
-    throw new Error(err.detail || '上传失败');
+    const err = await res.json().catch(() => ({ detail: '' }));
+    throw new Error(err.detail || getApiErrorMessage('api.uploadFailed'));
   }
   return res.json();
 }
 
-export async function createNote(title: string, content: string): Promise<Document> {
-  const res = await fetch(
-    `${BASE_URL}/documents/note?title=${encodeURIComponent(title)}&content=${encodeURIComponent(content)}`,
-    { method: 'POST' },
-  );
+export async function createNote(
+  title: string,
+  content: string,
+  collectionId?: string
+): Promise<Document> {
+  const params = new URLSearchParams({ title, content });
+  if (collectionId) params.set('collection_id', collectionId);
+  const res = await fetch(`${BASE_URL}/documents/note?${params}`, { method: 'POST' });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: '创建失败' }));
-    throw new Error(err.detail || '创建失败');
+    const err = await res.json().catch(() => ({ detail: '' }));
+    throw new Error(err.detail || getApiErrorMessage('api.createFailed'));
   }
   return res.json();
 }
 
 export async function listDocuments(): Promise<Document[]> {
-  const res = await fetch(`${BASE_URL}/documents`);
-  const data = await res.json();
+  const data = await fetchJson<{ documents: Document[] }>(`${BASE_URL}/documents`);
   return data.documents;
 }
 
 export async function getChunks(docId: string): Promise<ChunkInfo[]> {
-  const res = await fetch(`${BASE_URL}/documents/${docId}/chunks`);
-  return res.json();
+  return fetchJson<ChunkInfo[]>(`${BASE_URL}/documents/${docId}/chunks`);
 }
 
 export async function deleteDocument(docId: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/documents/${docId}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('删除失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.deleteFailed'));
 }
 
 // ── Tag API ───────────────────────────────────────────────
@@ -141,26 +186,24 @@ export async function addTag(docId: string, tagName: string): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tag_name: tagName }),
   });
-  if (!res.ok) throw new Error('添加标签失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.addTagFailed'));
 }
 
 export async function removeTag(docId: string, tagName: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/documents/${docId}/tags/${encodeURIComponent(tagName)}`, {
     method: 'DELETE',
   });
-  if (!res.ok) throw new Error('删除标签失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.removeTagFailed'));
 }
 
 export async function listAllTags(): Promise<{ id: string; name: string; doc_count: number }[]> {
-  const res = await fetch(`${BASE_URL}/documents/tags/all`);
-  return res.json();
+  return fetchJson(`${BASE_URL}/documents/tags/all`);
 }
 
 // ── Collection API ────────────────────────────────────────
 
 export async function listCollections(): Promise<Collection[]> {
-  const res = await fetch(`${BASE_URL}/collections`);
-  return res.json();
+  return fetchJson<Collection[]>(`${BASE_URL}/collections`);
 }
 
 export async function createCollection(name: string, description?: string): Promise<Collection> {
@@ -170,33 +213,38 @@ export async function createCollection(name: string, description?: string): Prom
     body: JSON.stringify({ name, description }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: '创建分组失败' }));
-    throw new Error(err.detail || '创建分组失败');
+    const err = await res.json().catch(() => ({ detail: '' }));
+    throw new Error(err.detail || getApiErrorMessage('api.createCollectionFailed'));
   }
   return res.json();
 }
 
 export async function deleteCollection(collectionId: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/collections/${collectionId}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('删除分组失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.deleteCollectionFailed'));
 }
 
-export async function assignDocToCollection(docId: string, collectionId: string | null): Promise<void> {
+export async function assignDocToCollection(
+  docId: string,
+  collectionId: string | null
+): Promise<void> {
   const res = await fetch(`${BASE_URL}/collections/documents/${docId}/collection`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collection_id: collectionId }),
   });
-  if (!res.ok) throw new Error('分配分组失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.assignCollectionFailed'));
 }
 
 // ── Summary API ───────────────────────────────────────────
 
-export async function generateSummary(docId: string): Promise<{ doc_id: string; filename: string; summary: string }> {
+export async function generateSummary(
+  docId: string
+): Promise<{ doc_id: string; filename: string; summary: string }> {
   const res = await fetch(`${BASE_URL}/documents/${docId}/summary`, { method: 'POST' });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: '摘要生成失败' }));
-    throw new Error(err.detail || '摘要生成失败');
+    const err = await res.json().catch(() => ({ detail: '' }));
+    throw new Error(err.detail || getApiErrorMessage('api.summaryFailed'));
   }
   return res.json();
 }
@@ -204,67 +252,104 @@ export async function generateSummary(docId: string): Promise<{ doc_id: string; 
 // ── Chat API ──────────────────────────────────────────────
 
 export async function listSessions(): Promise<ChatSession[]> {
-  const res = await fetch(`${BASE_URL}/chat/sessions`);
-  return res.json();
+  return fetchJson<ChatSession[]>(`${BASE_URL}/chat/sessions`);
 }
 
 export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
-  const res = await fetch(`${BASE_URL}/chat/sessions/${sessionId}/messages`);
-  return res.json();
+  return fetchJson<ChatMessage[]>(`${BASE_URL}/chat/sessions/${sessionId}/messages`);
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  await fetch(`${BASE_URL}/chat/sessions/${sessionId}`, { method: 'DELETE' });
+  const res = await fetch(`${BASE_URL}/chat/sessions/${sessionId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(getApiErrorMessage('api.deleteFailed'));
+}
+
+type SsePayload = Record<string, unknown> | unknown[];
+
+async function consumeChatStream(
+  response: Response,
+  handlers: ChatStreamHandlers = {}
+): Promise<ChatStreamResult> {
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: '' }));
+    throw new Error(error.detail || `HTTP ${response.status}`);
+  }
+  if (!response.body) throw new Error('No response body');
+
+  const result: ChatStreamResult = { content: '', citations: [] };
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  const processEvent = (block: string) => {
+    if (!block.trim()) return;
+
+    let eventType = 'message';
+    const dataLines: string[] = [];
+    for (const line of block.split(/\r?\n/)) {
+      if (line.startsWith('event:')) eventType = line.slice(6).trim();
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+    }
+    if (dataLines.length === 0) return;
+
+    let payload: SsePayload;
+    try {
+      payload = JSON.parse(dataLines.join('\n')) as SsePayload;
+    } catch {
+      throw new Error('服务端返回了无效的流式数据');
+    }
+
+    if (eventType === 'citations' && Array.isArray(payload)) {
+      result.citations = payload as Citation[];
+      handlers.onCitations?.(result.citations);
+      return;
+    }
+    if (Array.isArray(payload)) return;
+
+    if (eventType === 'session' && typeof payload.session_id === 'string') {
+      result.sessionId = payload.session_id;
+      handlers.onSessionId?.(payload.session_id);
+    } else if (eventType === 'token' && typeof payload.text === 'string') {
+      result.content += payload.text;
+      handlers.onToken?.(payload.text);
+    } else if (eventType === 'debug') {
+      result.debug = payload as unknown as DebugInfo;
+      handlers.onDebug?.(result.debug);
+    } else if (eventType === 'error') {
+      throw new Error(typeof payload.error === 'string' ? payload.error : '流式请求失败');
+    } else if (eventType === 'done') {
+      if (typeof payload.error === 'string') throw new Error(payload.error);
+      if (typeof payload.message_id === 'string') result.messageId = payload.message_id;
+      if (typeof payload.agent_name === 'string') result.agentName = payload.agent_name;
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() ?? '';
+    blocks.forEach(processEvent);
+
+    if (done) break;
+  }
+  processEvent(buffer);
+  return result;
 }
 
 export async function sendChatMessage(
   message: string,
   sessionId?: string,
-  onToken?: (text: string) => void,
-  onCitations?: (citations: Citation[]) => void,
-  onDebug?: (debug: DebugInfo) => void,
-  onSessionId?: (id: string) => void,
-): Promise<void> {
+  collectionId?: string | null,
+  handlers?: ChatStreamHandlers
+): Promise<ChatStreamResult> {
   const res = await fetch(`${BASE_URL}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, message }),
+    body: JSON.stringify({ session_id: sessionId, message, collection_id: collectionId }),
   });
-
-  if (!res.ok) throw new Error('发送失败');
-  if (!res.body) throw new Error('No response body');
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        const eventType = line.slice(7).trim();
-        continue;
-      }
-      if (line.startsWith('data: ')) {
-        const data = JSON.parse(line.slice(6));
-        // Determine event type from the previous event line
-        const eventLine = lines.find(l => l.startsWith('event: '));
-        const eventType = eventLine ? eventLine.slice(7).trim() : '';
-
-        // Parse SSE properly
-        if (data.session_id) onSessionId?.(data.session_id);
-        if (data.text !== undefined) onToken?.(data.text);
-        if (Array.isArray(data)) onCitations?.(data);
-        if (data.query) onDebug?.(data);
-      }
-    }
-  }
+  return consumeChatStream(res, handlers);
 }
 
 // ── History Search ────────────────────────────────────────
@@ -291,7 +376,7 @@ export async function searchHistory(q: string, mode?: string): Promise<HistorySe
 
 export async function exportBackup(): Promise<void> {
   const res = await fetch(`${BASE_URL}/backup/export`, { method: 'POST' });
-  if (!res.ok) throw new Error('导出备份失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.exportBackupFailed'));
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -301,7 +386,9 @@ export async function exportBackup(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-export async function importBackup(file: File): Promise<{ success: boolean; documents_restored: number }> {
+export async function importBackup(
+  file: File
+): Promise<{ success: boolean; documents_restored: number }> {
   const formData = new FormData();
   formData.append('file', file);
   const res = await fetch(`${BASE_URL}/backup/import`, {
@@ -309,8 +396,8 @@ export async function importBackup(file: File): Promise<{ success: boolean; docu
     body: formData,
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: '导入失败' }));
-    throw new Error(err.detail || '导入失败');
+    const err = await res.json().catch(() => ({ detail: '' }));
+    throw new Error(err.detail || getApiErrorMessage('api.importFailed'));
   }
   return res.json();
 }
@@ -319,7 +406,7 @@ export async function importBackup(file: File): Promise<{ success: boolean; docu
 
 export async function exportMessageAsMarkdown(messageId: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/backup/export-md/${messageId}`, { method: 'POST' });
-  if (!res.ok) throw new Error('导出失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.exportFailed'));
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -400,32 +487,40 @@ export async function generateQuiz(params: {
     body: JSON.stringify(params),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: '生成测验失败' }));
-    throw new Error(err.detail || '生成测验失败');
+    const err = await res.json().catch(() => ({ detail: '' }));
+    throw new Error(err.detail || getApiErrorMessage('api.generateQuizFailed'));
   }
   return res.json();
 }
 
-export async function submitQuiz(quizId: string, answers: { question_id: string; user_answer: string }[]): Promise<QuizResult> {
+export async function submitQuiz(
+  quizId: string,
+  answers: { question_id: string; user_answer: string }[]
+): Promise<QuizResult> {
   const res = await fetch(`${BASE_URL}/quiz/${quizId}/submit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ answers }),
   });
-  if (!res.ok) throw new Error('提交失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.submitFailed'));
   return res.json();
 }
 
 export async function listWrongAnswers(): Promise<WrongAnswer[]> {
-  const res = await fetch(`${BASE_URL}/quiz/wrong-answers`);
-  return res.json();
+  return fetchJson<WrongAnswer[]>(`${BASE_URL}/quiz/wrong-answers`);
 }
 
-export async function reviewWrongAnswer(answerId: string, isCorrect: boolean): Promise<{ mastery_level: number; removed: boolean }> {
-  const res = await fetch(`${BASE_URL}/quiz/wrong-answers/${answerId}/review?is_correct=${isCorrect}`, {
-    method: 'POST',
-  });
-  if (!res.ok) throw new Error('复习失败');
+export async function reviewWrongAnswer(
+  answerId: string,
+  isCorrect: boolean
+): Promise<{ mastery_level: number; removed: boolean }> {
+  const res = await fetch(
+    `${BASE_URL}/quiz/wrong-answers/${answerId}/review?is_correct=${isCorrect}`,
+    {
+      method: 'POST',
+    }
+  );
+  if (!res.ok) throw new Error(getApiErrorMessage('api.reviewFailed'));
   return res.json();
 }
 
@@ -435,7 +530,7 @@ export async function exportAnki(params?: { tag?: string; doc_id?: string }): Pr
   if (params?.doc_id) query.set('doc_id', params.doc_id);
   const qs = query.toString();
   const res = await fetch(`${BASE_URL}/quiz/anki/export${qs ? '?' + qs : ''}`);
-  if (!res.ok) throw new Error('导出失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.exportFailed'));
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -446,8 +541,7 @@ export async function exportAnki(params?: { tag?: string; doc_id?: string }): Pr
 }
 
 export async function getDashboard(): Promise<DashboardData> {
-  const res = await fetch(`${BASE_URL}/quiz/dashboard`);
-  return res.json();
+  return fetchJson<DashboardData>(`${BASE_URL}/quiz/dashboard`);
 }
 
 // ── Knowledge Graph API ──────────────────────────────────
@@ -495,50 +589,49 @@ export const knowledgeGraphApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ doc_ids: docIds }),
     });
-    if (!res.ok) throw new Error('构建知识图谱失败');
+    if (!res.ok) throw new Error(getApiErrorMessage('api.buildGraphFailed'));
     return res.json();
   },
 
   async getGraph(docIds?: string[]): Promise<GraphData> {
     const query = docIds ? `?doc_ids=${docIds.join(',')}` : '';
     const res = await fetch(`${BASE_URL}/knowledge-graph${query}`);
-    if (!res.ok) throw new Error('获取知识图谱失败');
+    if (!res.ok) throw new Error(getApiErrorMessage('api.getGraphFailed'));
     return res.json();
   },
 
-  async getRelated(conceptName: string, topK: number = 5): Promise<{ concept: string; related: RelatedConcept[] }> {
-    const res = await fetch(`${BASE_URL}/knowledge-graph/related?q=${encodeURIComponent(conceptName)}&top_k=${topK}`);
-    if (!res.ok) throw new Error('获取相关概念失败');
+  async getRelated(
+    conceptName: string,
+    topK: number = 5
+  ): Promise<{ concept: string; related: RelatedConcept[] }> {
+    const res = await fetch(
+      `${BASE_URL}/knowledge-graph/related?q=${encodeURIComponent(conceptName)}&top_k=${topK}`
+    );
+    if (!res.ok) throw new Error(getApiErrorMessage('api.getRelatedFailed'));
     return res.json();
   },
 };
 
 // ── Multi-Agent API ────────────────────────────────────
 
-export interface MultiAgentResponse {
-  content: string;
-  agent_name: string;
-  metadata: Record<string, unknown>;
-}
-
 export async function sendMultiAgentChat(
   message: string,
   sessionId?: string,
-): Promise<MultiAgentResponse> {
+  collectionId?: string | null,
+  handlers?: ChatStreamHandlers
+): Promise<ChatStreamResult> {
   const res = await fetch(`${BASE_URL}/multi-agent/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, session_id: sessionId }),
+    body: JSON.stringify({ message, session_id: sessionId, collection_id: collectionId }),
   });
-  if (!res.ok) throw new Error('Multi-Agent 请求失败');
-  return res.json();
+  return consumeChatStream(res, handlers);
 }
 
 // ── Health ─────────────────────────────────────────────────
 
 export async function healthCheck(): Promise<Record<string, unknown>> {
-  const res = await fetch(`${BASE_URL}/health`);
-  return res.json();
+  return fetchJson<Record<string, unknown>>(`${BASE_URL}/health`);
 }
 
 // ── Settings API ──────────────────────────────────────────
@@ -559,7 +652,7 @@ export interface ApiKeyUpdateResponse {
 
 export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
   const res = await fetch(`${BASE_URL}/settings/api-key`);
-  if (!res.ok) throw new Error('获取 API Key 状态失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.getApiKeyStatusFailed'));
   return res.json();
 }
 
@@ -569,6 +662,6 @@ export async function updateApiKey(apiKey: string): Promise<ApiKeyUpdateResponse
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ api_key: apiKey }),
   });
-  if (!res.ok) throw new Error('更新 API Key 失败');
+  if (!res.ok) throw new Error(getApiErrorMessage('api.updateApiKeyFailed'));
   return res.json();
 }

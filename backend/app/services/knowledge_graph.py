@@ -5,18 +5,21 @@ builds a graph in SQLite, and provides query APIs for visualization
 and chat-based concept recommendations.
 """
 
-import uuid
+import asyncio
 import json
-import re
 import logging
-from typing import Optional
+import re
+import uuid
 
 from openai import AsyncOpenAI
 
-from app.db.database import get_connection
 from app.config import get_settings
+from app.db.database import get_db
 
 logger = logging.getLogger(__name__)
+
+# Max concurrent LLM calls for concept extraction
+MAX_CONCURRENT_EXTRACTIONS = 10
 
 
 # ---------------------------------------------------------------------------
@@ -67,29 +70,38 @@ async def extract_concepts_from_chunks(
         }
     """
     settings = get_settings()
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url or None)
 
-    all_concepts: dict[str, dict] = {}       # name -> concept info
-    all_relations: dict[str, dict] = {}      # (src, tgt, type) -> relation info
+    # Filter valid chunks first
+    valid_chunks = [c for c in chunks if c.get("text") and len(c["text"].strip()) >= 50]
 
-    for chunk in chunks:
-        text = chunk.get("text", "")
-        if not text or len(text.strip()) < 50:
-            continue
+    if not valid_chunks:
+        return {"concepts": [], "relations": []}
 
-        try:
-            result = await _extract_single_chunk(client, text, settings.llm_model)
-        except Exception as e:
-            logger.warning(f"[KG] Chunk extraction failed: {e}")
-            continue
+    # Process chunks in parallel with concurrency limit
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_EXTRACTIONS)
 
+    async def extract_one(chunk: dict) -> dict:
+        async with semaphore:
+            try:
+                return await _extract_single_chunk(client, chunk["text"], settings.llm_model)
+            except Exception as e:
+                logger.warning(f"[KG] Chunk extraction failed: {e}")
+                return {"concepts": [], "relations": []}
+
+    results = await asyncio.gather(*(extract_one(c) for c in valid_chunks))
+
+    # Merge results (sequential, no race conditions)
+    all_concepts: dict[str, dict] = {}  # name -> concept info
+    all_relations: dict[str, dict] = {}  # (src, tgt, type) -> relation info
+
+    for result in results:
         # Merge concepts (deduplicate by name)
         for concept in result.get("concepts", []):
             name = concept.get("name", "").strip()
             if not name:
                 continue
             if name in all_concepts:
-                # Keep the longer description
                 existing_desc = all_concepts[name].get("description", "")
                 new_desc = concept.get("description", "")
                 if len(new_desc) > len(existing_desc):
@@ -137,7 +149,7 @@ async def _extract_single_chunk(client: AsyncOpenAI, text: str, model: str) -> d
     try:
         response = await client.chat.completions.create(
             model=model,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
             temperature=0.1,
             max_tokens=2000,
         )
@@ -148,13 +160,13 @@ async def _extract_single_chunk(client: AsyncOpenAI, text: str, model: str) -> d
 
     # Try to parse JSON from the response
     try:
-        return json.loads(raw)
+        return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         # Attempt to extract JSON block from response
         match = re.search(r"\{[\s\S]*\}", raw)
         if match:
             try:
-                return json.loads(match.group())
+                return json.loads(match.group())  # type: ignore[no-any-return]
             except json.JSONDecodeError:
                 return {"concepts": [], "relations": []}
         return {"concepts": [], "relations": []}
@@ -163,6 +175,7 @@ async def _extract_single_chunk(client: AsyncOpenAI, text: str, model: str) -> d
 # ---------------------------------------------------------------------------
 # Graph building (persist to database)
 # ---------------------------------------------------------------------------
+
 
 async def build_graph_for_document(
     doc_id: str,
@@ -183,8 +196,7 @@ async def build_graph_for_document(
 
     concept_id_map: dict[str, str] = {}  # name -> concept_id
 
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         # Upsert concepts
         for concept in extracted["concepts"]:
             name = concept["name"]
@@ -251,8 +263,6 @@ async def build_graph_for_document(
                 )
 
         conn.commit()
-    finally:
-        conn.close()
 
     return {
         "concepts_added": len(extracted["concepts"]),
@@ -260,7 +270,7 @@ async def build_graph_for_document(
     }
 
 
-async def build_graph(doc_ids: Optional[list[str]] = None) -> dict:
+async def build_graph(doc_ids: list[str] | None = None) -> dict:
     """
     Build/update the knowledge graph for specified documents.
     If no doc_ids provided, processes all documents with status='ready'.
@@ -268,8 +278,7 @@ async def build_graph(doc_ids: Optional[list[str]] = None) -> dict:
     Returns:
         {"documents_processed": int, "concepts_added": int, "relations_added": int}
     """
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         if doc_ids:
             placeholders = ",".join("?" for _ in doc_ids)
             rows = conn.execute(
@@ -280,8 +289,6 @@ async def build_graph(doc_ids: Optional[list[str]] = None) -> dict:
             rows = conn.execute(
                 "SELECT id, filename FROM documents WHERE status = 'ready'"
             ).fetchall()
-    finally:
-        conn.close()
 
     total_concepts = 0
     total_relations = 0
@@ -289,26 +296,23 @@ async def build_graph(doc_ids: Optional[list[str]] = None) -> dict:
     for row in rows:
         doc_id = row["id"]
         # Load chunks for this document
-        conn = get_connection()
-        try:
+        with get_db() as conn:
             chunks = conn.execute(
                 "SELECT id, text FROM chunks WHERE doc_id = ?",
                 (doc_id,),
             ).fetchall()
-        finally:
-            conn.close()
 
         if not chunks:
             continue
 
-        chunk_list = [
-            {"id": c["id"], "text": c["text"]} for c in chunks
-        ]
+        chunk_list = [{"id": c["id"], "text": c["text"]} for c in chunks]
 
         result = await build_graph_for_document(doc_id, chunk_list)
         total_concepts += result["concepts_added"]
         total_relations += result["relations_added"]
-        logger.info(f"[KG] Document {doc_id}: {result['concepts_added']} concepts, {result['relations_added']} relations")
+        logger.info(
+            f"[KG] Document {doc_id}: {result['concepts_added']} concepts, {result['relations_added']} relations"
+        )
 
     return {
         "documents_processed": len(rows),
@@ -321,16 +325,14 @@ async def build_graph(doc_ids: Optional[list[str]] = None) -> dict:
 # Query APIs
 # ---------------------------------------------------------------------------
 
+
 def get_related_concepts(concept_name: str, top_k: int = 5) -> list[dict]:
     """
     Get concepts related to the given concept name.
     Returns related concepts sorted by relation strength.
     """
-    conn = get_connection()
-    try:
-        concept = conn.execute(
-            "SELECT id FROM concepts WHERE name = ?", (concept_name,)
-        ).fetchone()
+    with get_db() as conn:
+        concept = conn.execute("SELECT id FROM concepts WHERE name = ?", (concept_name,)).fetchone()
 
         if not concept:
             return []
@@ -368,11 +370,9 @@ def get_related_concepts(concept_name: str, top_k: int = 5) -> list[dict]:
             }
             for r in rows
         ]
-    finally:
-        conn.close()
 
 
-def get_graph_data(doc_ids: Optional[list[str]] = None) -> dict:
+def get_graph_data(doc_ids: list[str] | None = None) -> dict:
     """
     Get full graph data (nodes + edges) for visualization.
     Optionally filter by document IDs.
@@ -383,8 +383,7 @@ def get_graph_data(doc_ids: Optional[list[str]] = None) -> dict:
             "edges": [{"source", "target", "relation_type", "strength"}]
         }
     """
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         if doc_ids:
             # Filter: get concepts that appear in the specified documents
             placeholders = ",".join("?" for _ in doc_ids)
@@ -445,5 +444,3 @@ def get_graph_data(doc_ids: Optional[list[str]] = None) -> dict:
         ]
 
         return {"nodes": nodes, "edges": edges}
-    finally:
-        conn.close()

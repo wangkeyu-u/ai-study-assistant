@@ -8,8 +8,10 @@ and citations.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 
-from app.services.agents.base import BaseAgent, AgentResponse
+from app.services.agents.base import AgentResponse, BaseAgent
+from app.services.context_utils import build_context_text
 from app.services.rag import RAGPipeline
 
 logger = logging.getLogger(__name__)
@@ -26,11 +28,6 @@ TUTOR_SYSTEM_PROMPT = """你是一位资深导师（Tutor Agent）。你的任�
 
 参考资料：
 {context}"""
-
-CONTEXT_TEMPLATE = """[{index}] 文档: {doc_name}{page_info}
-{heading_info}---
-{chunk_text}
-"""
 
 
 class TutorAgent(BaseAgent):
@@ -64,6 +61,13 @@ class TutorAgent(BaseAgent):
                 embedder=pipeline.embedder,
                 top_k=pipeline.settings.top_k,
                 similarity_threshold=pipeline.settings.similarity_threshold,
+                hybrid_search_enabled=pipeline.settings.hybrid_search_enabled,
+                candidate_multiplier=pipeline.settings.retrieval_candidate_multiplier,
+                rrf_k=pipeline.settings.rrf_k,
+                confidence_gate_enabled=pipeline.settings.retrieval_confidence_gate_enabled,
+                vector_only_min_score=pipeline.settings.vector_only_min_score,
+                reranker=pipeline.reranker,
+                rerank_top_n=pipeline.settings.reranker_top_n,
             )
             retrieval_result = retriever.retrieve(rewritten_query, collection_id=collection_id)
 
@@ -75,7 +79,7 @@ class TutorAgent(BaseAgent):
                 )
 
             # Step 2: Build tutor-specific prompt
-            context_text = self._build_context(retrieval_result.chunks)
+            context_text = build_context_text(retrieval_result.chunks)
             system_msg = TUTOR_SYSTEM_PROMPT.format(context=context_text)
 
             messages = [{"role": "system", "content": system_msg}]
@@ -87,7 +91,7 @@ class TutorAgent(BaseAgent):
             # Step 3: Call LLM
             response = await pipeline.generator.client.chat.completions.create(
                 model=pipeline.generator.model,
-                messages=messages,
+                messages=messages,  # type: ignore[arg-type]
                 temperature=0.3,
             )
 
@@ -108,24 +112,131 @@ class TutorAgent(BaseAgent):
             logger.exception("TutorAgent failed, falling back to default RAG")
             return await self._fallback(pipeline, query, history, collection_id, error=e)
 
-    # ── Helpers ─────────────────────────────────────────────
+    async def process_stream(
+        self, query: str, context: dict | None = None
+    ) -> AsyncGenerator[dict, None]:
+        """Stream tutor response with token-by-token output and citation extraction.
 
-    @staticmethod
-    def _build_context(chunks: list) -> str:
-        parts = []
-        for i, chunk in enumerate(chunks, 1):
-            page_info = f", 第{chunk.page_num}页" if chunk.page_num else ""
-            heading_info = f"标题: {chunk.heading}\n" if chunk.heading else ""
-            parts.append(
-                CONTEXT_TEMPLATE.format(
-                    index=i,
-                    doc_name=chunk.doc_name,
-                    page_info=page_info,
-                    heading_info=heading_info,
-                    chunk_text=chunk.text,
-                )
+        Yields events: {"type": "token", "text": "..."}, {"type": "citations", "citations": [...]},
+        {"type": "done", "agent_name": "...", "content": "...", "metadata": {...}}
+        """
+        context = context or {}
+        pipeline: RAGPipeline | None = context.get("pipeline")
+        history = context.get("history")
+        collection_id = context.get("collection_id")
+
+        if pipeline is None:
+            yield {"type": "token", "text": "Tutor Agent 暂时不可用（RAG pipeline 未初始化）。"}
+            yield {"type": "done", "agent_name": self.name, "content": "", "metadata": {}}
+            return
+
+        try:
+            # Step 1: Retrieve relevant chunks
+            rewritten_query = query
+            if history and len(history) >= 2:
+                rewritten_query = await pipeline.generator.rewrite_query(query, history)
+
+            from app.services.retriever import Retriever
+
+            retriever = Retriever(
+                vector_store=pipeline.vector_store,
+                embedder=pipeline.embedder,
+                top_k=pipeline.settings.top_k,
+                similarity_threshold=pipeline.settings.similarity_threshold,
+                hybrid_search_enabled=pipeline.settings.hybrid_search_enabled,
+                candidate_multiplier=pipeline.settings.retrieval_candidate_multiplier,
+                rrf_k=pipeline.settings.rrf_k,
+                confidence_gate_enabled=pipeline.settings.retrieval_confidence_gate_enabled,
+                vector_only_min_score=pipeline.settings.vector_only_min_score,
+                reranker=pipeline.reranker,
+                rerank_top_n=pipeline.settings.reranker_top_n,
             )
-        return "\n".join(parts)
+            retrieval_result = retriever.retrieve(rewritten_query, collection_id=collection_id)
+
+            if not retrieval_result.chunks:
+                yield {
+                    "type": "token",
+                    "text": "根据现有资料，没有找到足够的信息来解释这个概念。请上传相关资料后再试。",
+                }
+                yield {
+                    "type": "done",
+                    "agent_name": self.name,
+                    "content": "",
+                    "metadata": {"retrieved_chunks": 0},
+                }
+                return
+
+            # Step 2: Build prompt
+            context_text = build_context_text(retrieval_result.chunks)
+            system_msg = TUTOR_SYSTEM_PROMPT.format(context=context_text)
+
+            messages = [{"role": "system", "content": system_msg}]
+            if history:
+                for msg in history[-10:]:
+                    messages.append({"role": msg["role"], "content": msg["content"]})
+            messages.append({"role": "user", "content": query})
+
+            # Step 3: Stream LLM response
+            full_text = ""
+            stream = await pipeline.generator.client.chat.completions.create(
+                model=pipeline.generator.model,
+                messages=messages,  # type: ignore[arg-type]
+                temperature=0.3,
+                stream=True,
+            )
+
+            async for chunk in stream:  # type: ignore[union-attr]
+                if chunk.choices and chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    full_text += text
+                    yield {"type": "token", "text": text}
+
+            # Step 4: Extract citations from completed text
+            citations = pipeline.generator.extract_citations(full_text, retrieval_result.chunks)
+            citations_payload = [
+                {
+                    "doc_name": c.doc_name,
+                    "page_num": c.page_num,
+                    "chunk_id": c.chunk_id,
+                    "chunk_index": c.chunk_index,
+                    "text_preview": c.text_preview,
+                }
+                for c in citations
+            ]
+            yield {"type": "citations", "citations": citations_payload}
+
+            yield {
+                "type": "done",
+                "agent_name": self.name,
+                "content": full_text,
+                "metadata": {
+                    "retrieved_chunks": len(retrieval_result.chunks),
+                    "citation_count": len(citations),
+                },
+            }
+
+        except Exception as e:
+            logger.exception("TutorAgent streaming failed, falling back to default RAG")
+            try:
+                gen_result, _debug = await pipeline.query(
+                    query, history=history, collection_id=collection_id
+                )
+                yield {"type": "token", "text": gen_result.content}
+                yield {
+                    "type": "done",
+                    "agent_name": "Tutor (fallback)",
+                    "content": gen_result.content,
+                    "metadata": {"fallback_reason": str(e)},
+                }
+            except Exception as fallback_err:
+                yield {
+                    "type": "done",
+                    "agent_name": self.name,
+                    "content": "",
+                    "metadata": {"error": str(fallback_err)},
+                }
+
+    # ── Helpers ─────────────────────────────────────────────
 
     @staticmethod
     async def _fallback(
@@ -137,7 +248,9 @@ class TutorAgent(BaseAgent):
     ) -> AgentResponse:
         """Fall back to the standard RAG pipeline when the tutor-specific flow fails."""
         try:
-            gen_result, _debug = await pipeline.query(query, history=history, collection_id=collection_id)
+            gen_result, _debug = await pipeline.query(
+                query, history=history, collection_id=collection_id
+            )
             return AgentResponse(
                 content=gen_result.content,
                 agent_name="Tutor (fallback)",

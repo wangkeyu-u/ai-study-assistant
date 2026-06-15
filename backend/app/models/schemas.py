@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-
 # ── Document ───────────────────────────────────────────────
+
 
 class DocumentResponse(BaseModel):
     id: str
@@ -13,9 +13,9 @@ class DocumentResponse(BaseModel):
     file_type: str
     file_size: int
     chunk_count: int
-    status: str                    # processing | ready | error
+    status: str  # processing | ready | error
     error_message: str | None = None
-    tags: list[str] = []           # tag names
+    tags: list[str] = []  # tag names
     collection_id: str | None = None
     collection_name: str | None = None
     created_at: str
@@ -35,6 +35,7 @@ class ChunkResponse(BaseModel):
 
 # ── Tags ───────────────────────────────────────────────────
 
+
 class TagResponse(BaseModel):
     id: str
     name: str
@@ -46,6 +47,7 @@ class TagAssignRequest(BaseModel):
 
 # ── Summary ────────────────────────────────────────────────
 
+
 class SummaryResponse(BaseModel):
     doc_id: str
     filename: str
@@ -53,6 +55,7 @@ class SummaryResponse(BaseModel):
 
 
 # ── Chat ───────────────────────────────────────────────────
+
 
 class ChatRequest(BaseModel):
     session_id: str | None = None
@@ -86,12 +89,17 @@ class ChatMessageResponse(BaseModel):
 
 # ── Debug ──────────────────────────────────────────────────
 
+
 class RetrievedChunkInfo(BaseModel):
     chunk_id: str
     text_preview: str
     similarity_score: float
     doc_name: str
     page_num: int | None = None
+    vector_score: float | None = None
+    lexical_score: float | None = None
+    rerank_score: float | None = None
+    retrieval_sources: list[str] = []
 
 
 class TokenUsage(BaseModel):
@@ -104,6 +112,10 @@ class DebugInfo(BaseModel):
     query: str
     rewritten_query: str | None = None
     embedding_model: str
+    retrieval_mode: str = "vector"
+    confidence_rejected: bool = False
+    confidence_score: float | None = None
+    rejection_reason: str | None = None
     top_k_chunks: list[RetrievedChunkInfo]
     final_prompt: str
     token_usage: TokenUsage
@@ -112,6 +124,7 @@ class DebugInfo(BaseModel):
 
 
 # ── Collections ─────────────────────────────────────────────
+
 
 class CollectionCreate(BaseModel):
     name: str
@@ -132,18 +145,21 @@ class CollectionAssignRequest(BaseModel):
 
 # ── Quiz ──────────────────────────────────────────────────
 
+
 class QuizGenerateRequest(BaseModel):
     doc_ids: list[str] | None = None
     tag: str | None = None
-    count: int = 5                              # number of questions
+    count: int = 5  # number of questions
+
 
 class QuizQuestionResponse(BaseModel):
     id: str
-    question_type: str                          # 'choice' | 'true_false'
+    question_type: str  # 'choice' | 'true_false'
     question_text: str
     options: list[str] | None = None
-    correct_answer: str | None = None           # hidden until submission
+    correct_answer: str | None = None  # hidden until submission
     explanation: str | None = None
+
 
 class QuizResponse(BaseModel):
     id: str
@@ -152,8 +168,10 @@ class QuizResponse(BaseModel):
     questions: list[QuizQuestionResponse]
     created_at: str
 
+
 class QuizSubmitRequest(BaseModel):
-    answers: list[dict]                         # [{"question_id": "...", "user_answer": "..."}]
+    answers: list[dict]  # [{"question_id": "...", "user_answer": "..."}]
+
 
 class QuizResultItem(BaseModel):
     question_id: str
@@ -163,11 +181,13 @@ class QuizResultItem(BaseModel):
     is_correct: bool
     explanation: str | None = None
 
+
 class QuizResultResponse(BaseModel):
     quiz_id: str
     correct_count: int
     total_count: int
     results: list[QuizResultItem]
+
 
 class WrongAnswerResponse(BaseModel):
     id: str
@@ -180,6 +200,7 @@ class WrongAnswerResponse(BaseModel):
     review_count: int
     mastery_level: int
     created_at: str
+
 
 class DashboardResponse(BaseModel):
     total_documents: int

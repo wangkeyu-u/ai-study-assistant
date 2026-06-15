@@ -14,11 +14,12 @@ to the Tutor agent (which itself degrades to the standard RAG pipeline).
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 
-from app.services.agents.base import BaseAgent, AgentResponse
-from app.services.agents.tutor import TutorAgent
+from app.services.agents.base import AgentResponse, BaseAgent
 from app.services.agents.examiner import ExaminerAgent
 from app.services.agents.summarizer import SummarizerAgent
+from app.services.agents.tutor import TutorAgent
 from app.services.rag import RAGPipeline
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,42 @@ class SupervisorAgent:
         # Attach classification info to metadata
         response.metadata["classified_intent"] = intent
         return response
+
+    async def route_stream(
+        self,
+        query: str,
+        pipeline: RAGPipeline,
+        history: list[dict] | None = None,
+        collection_id: str | None = None,
+    ) -> AsyncGenerator[dict, None]:
+        """Classify intent and stream from the appropriate specialist agent.
+
+        Yields SSE-compatible events: {"type": "token"/"citations"/"done", ...}
+        """
+        # Step 1: Classify intent
+        intent = await self._classify_intent(query, pipeline)
+        logger.info("Supervisor classified intent: '%s' for query: '%s'", intent, query[:80])
+
+        # Step 2: Select agent
+        agent_name = INTENT_AGENT_MAP.get(intent, "tutor")
+        agent: BaseAgent = self._agent_map[agent_name]
+
+        # Step 3: Build context for the agent
+        context = {
+            "pipeline": pipeline,
+            "history": history,
+            "collection_id": collection_id,
+            "intent": intent,
+        }
+
+        # Step 4: Stream from the specialist agent
+        async for event in agent.process_stream(query, context):
+            # Attach classification info
+            if event.get("type") == "done":
+                if "metadata" not in event:
+                    event["metadata"] = {}
+                event["metadata"]["classified_intent"] = intent
+            yield event
 
     # ── Intent classification ─────────────────────────────────
 

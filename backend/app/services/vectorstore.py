@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -16,9 +17,10 @@ COLLECTION_NAME = "study_assistant"
 @dataclass
 class VectorSearchResult:
     """A single search result from the vector store."""
+
     chunk_id: str
     text: str
-    score: float                       # similarity score (0-1, higher is better)
+    score: float  # similarity score (0-1, higher is better)
     metadata: dict
 
 
@@ -29,7 +31,7 @@ class VectorStore:
         self.persist_dir = persist_dir
         self.embedding_dimension = embedding_dimension
         self._client: chromadb.ClientAPI | None = None
-        self._collection = None
+        self._collection: Any = None
 
     def _ensure_client(self):
         if self._client is None:
@@ -105,12 +107,14 @@ class VectorStore:
                 distance = results["distances"][0][idx]
                 similarity = 1.0 - distance
 
-                search_results.append(VectorSearchResult(
-                    chunk_id=chunk_id,
-                    text=results["documents"][0][idx],
-                    score=similarity,
-                    metadata=results["metadatas"][0][idx],
-                ))
+                search_results.append(
+                    VectorSearchResult(
+                        chunk_id=chunk_id,
+                        text=results["documents"][0][idx],
+                        score=similarity,
+                        metadata=results["metadatas"][0][idx],
+                    )
+                )
 
         return search_results
 
@@ -138,10 +142,26 @@ class VectorStore:
             logger.warning("Error deleting chunks for doc %s: %s", doc_id, e)
         return 0
 
+    def update_document_collection(self, doc_id: str, collection_id: str | None) -> int:
+        """Keep Chroma metadata in sync when a document changes collection."""
+        self._ensure_client()
+        result = self._collection.get(where={"doc_id": doc_id}, include=["metadatas"])
+        chunk_ids = result.get("ids") or []
+        metadatas = result.get("metadatas") or []
+        if not chunk_ids:
+            return 0
+
+        updated_metadatas = [
+            {**(metadata or {}), "collection_id": collection_id or ""} for metadata in metadatas
+        ]
+        self._collection.update(ids=chunk_ids, metadatas=updated_metadatas)
+        logger.info("Updated collection metadata for %d chunks in doc %s", len(chunk_ids), doc_id)
+        return len(chunk_ids)
+
     def count(self) -> int:
         """Return the total number of vectors in the store."""
         self._ensure_client()
-        return self._collection.count()
+        return int(self._collection.count())
 
     def health_check(self) -> bool:
         """Basic health check — try to access the collection."""
@@ -149,5 +169,6 @@ class VectorStore:
             self._ensure_client()
             self._collection.count()
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("Vector store health check failed: %s", e)
             return False

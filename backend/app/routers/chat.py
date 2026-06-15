@@ -1,147 +1,81 @@
 """Chat API routes with SSE streaming."""
 
 import json
-import uuid
-import time
+import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from app.db.database import get_connection
+from app.db.citation_utils import build_citations_payload
+from app.db.database import get_db
+from app.db.session_utils import (
+    delete_empty_session,
+    fetch_history,
+    get_or_create_session,
+    save_assistant_response,
+    save_user_message,
+)
+from app.dependencies import get_rag_pipeline
 from app.models.schemas import (
+    ChatMessageResponse,
     ChatRequest,
     ChatSessionResponse,
-    ChatMessageResponse,
     CitationData,
 )
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-
-
-def _get_rag_pipeline():
-    from app.main import rag_pipeline
-    return rag_pipeline
+logger = logging.getLogger(__name__)
 
 
 # ── Chat (SSE streaming) ──────────────────────────────────
 
+
 @router.post("")
 async def chat(request: ChatRequest):
     """Send a message and get a streaming RAG response via SSE."""
-    pipeline = _get_rag_pipeline()
-    conn = get_connection()
-
-    try:
-        # Create or get session
-        if request.session_id:
-            session = conn.execute(
-                "SELECT * FROM chat_sessions WHERE id=?", (request.session_id,)
-            ).fetchone()
-            if not session:
-                raise HTTPException(status_code=404, detail="会话不存在")
-            session_id = request.session_id
-        else:
-            session_id = str(uuid.uuid4())
-            title = request.message[:30] + ("..." if len(request.message) > 30 else "")
-            conn.execute(
-                "INSERT INTO chat_sessions (id, title) VALUES (?, ?)",
-                (session_id, title),
-            )
-            conn.commit()
-
-        # Fetch conversation history for multi-turn context
-        history = []
-        if request.session_id:
-            rows = conn.execute(
-                "SELECT role, content FROM chat_messages WHERE session_id=? ORDER BY created_at",
-                (session_id,),
-            ).fetchall()
-            history = [{"role": r["role"], "content": r["content"]} for r in rows]
-
-        # Save user message
-        user_msg_id = str(uuid.uuid4())
-        conn.execute(
-            "INSERT INTO chat_messages (id, session_id, role, content) VALUES (?, ?, 'user', ?)",
-            (user_msg_id, session_id, request.message),
-        )
-        conn.commit()
-
-    finally:
-        conn.close()
+    pipeline = get_rag_pipeline()
+    is_new_session = request.session_id is None
+    with get_db() as conn:
+        session_id = get_or_create_session(conn, request.session_id, request.message)
+        history = fetch_history(conn, session_id) if request.session_id else []
+        # NOTE: user message is saved inside event_stream() AFTER LLM succeeds
+        # to avoid orphaned messages when the LLM call fails
 
     # Stream the response
     async def event_stream():
-        full_text = ""
-        citations_data = []
-        start_time = time.time()
-
-        # Run the RAG query with conversation history
-        gen_result, debug_info = await pipeline.query(
-            request.message,
-            history=history,
-            collection_id=request.collection_id,
-        )
-
-        # Save assistant message
-        assistant_msg_id = str(uuid.uuid4())
-        conn = get_connection()
-        try:
-            conn.execute(
-                "INSERT INTO chat_messages (id, session_id, role, content) VALUES (?, ?, 'assistant', ?)",
-                (assistant_msg_id, session_id, gen_result.content),
-            )
-
-            # Save citations (lookup doc_id from chunks table)
-            for citation in gen_result.citations:
-                citation_id = str(uuid.uuid4())
-                chunk_doc_id = conn.execute(
-                    "SELECT doc_id FROM chunks WHERE id=?", (citation.chunk_id,)
-                ).fetchone()
-                doc_id = chunk_doc_id["doc_id"] if chunk_doc_id else ""
-                if not doc_id:
-                    continue  # skip orphan citations
-                conn.execute(
-                    """INSERT INTO citations
-                       (id, message_id, doc_id, chunk_id, doc_name, page_num, chunk_index, text_preview)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        citation_id,
-                        assistant_msg_id,
-                        doc_id,
-                        citation.chunk_id,
-                        citation.doc_name,
-                        citation.page_num,
-                        citation.chunk_index,
-                        citation.text_preview,
-                    ),
-                )
-
-            # Update session metadata
-            conn.execute(
-                "UPDATE chat_sessions SET message_count = message_count + 2, updated_at = CURRENT_TIMESTAMP WHERE id=?",
-                (session_id,),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        # Yield session ID first
+        # Yield session ID first (before any heavy work)
         yield f"event: session\ndata: {json.dumps({'session_id': session_id})}\n\n"
+
+        try:
+            # Run the RAG query with conversation history
+            gen_result, debug_info = await pipeline.query(
+                request.message,
+                history=history,
+                collection_id=request.collection_id,
+            )
+        except Exception as e:
+            logger.exception("RAG query failed for session %s", session_id)
+            if is_new_session:
+                with get_db() as conn:
+                    delete_empty_session(conn, session_id)
+            error_msg = f"回答生成失败: {e}"
+            yield f"event: error\ndata: {json.dumps({'error': error_msg})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'error': error_msg})}\n\n"
+            return
+
+        # Save both user message and assistant response in one transaction
+        # (user message was NOT saved before to avoid orphans on LLM failure)
+        with get_db() as conn:
+            save_user_message(conn, session_id, request.message)
+            assistant_msg_id = save_assistant_response(
+                conn, session_id, gen_result.content, gen_result.citations
+            )
 
         # Yield the answer text
         yield f"event: token\ndata: {json.dumps({'text': gen_result.content})}\n\n"
 
         # Yield citations
-        citations_payload = [
-            {
-                "doc_name": c.doc_name,
-                "page_num": c.page_num,
-                "chunk_id": c.chunk_id,
-                "chunk_index": c.chunk_index,
-                "text_preview": c.text_preview,
-            }
-            for c in gen_result.citations
-        ]
+        citations_payload = build_citations_payload(gen_result.citations)
         yield f"event: citations\ndata: {json.dumps(citations_payload, ensure_ascii=False)}\n\n"
 
         # Yield debug info
@@ -171,65 +105,46 @@ async def chat(request: ChatRequest):
 
 # ── History Search ──────────────────────────────────────────
 
+
+def _escape_like(s: str) -> str:
+    """Escape special characters in LIKE patterns (% and _)."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("/search")
 async def search_history(q: str, mode: str = "fulltext", limit: int = 20):
     """Search chat message history by full-text or semantic search."""
-    conn = get_connection()
-    try:
-        # Try FTS5 search first
-        rows = conn.execute(
-            """SELECT cm.id, cm.session_id, cm.role, cm.content, cm.created_at,
-                      cs.title as session_title,
-                      bm25(chat_messages_fts) as score
-               FROM chat_messages_fts fts
-               JOIN chat_messages cm ON cm.rowid = fts.rowid
-               JOIN chat_sessions cs ON cs.id = cm.session_id
-               WHERE chat_messages_fts MATCH ?
-               ORDER BY score
-               LIMIT ?""",
-            (q, limit),
-        ).fetchall()
-
-        # Fallback to LIKE search if FTS5 returns no results (common for Chinese)
-        if not rows:
-            rows = conn.execute(
-                """SELECT cm.id, cm.session_id, cm.role, cm.content, cm.created_at,
-                          cs.title as session_title,
-                          1.0 as score
-                   FROM chat_messages cm
-                   JOIN chat_sessions cs ON cs.id = cm.session_id
-                   WHERE cm.content LIKE ?
-                   ORDER BY cm.created_at DESC
-                   LIMIT ?""",
-                (f"%{q}%", limit),
-            ).fetchall()
-
-        return [
-            {
-                "message_id": r["id"],
-                "session_id": r["session_id"],
-                "session_title": r["session_title"],
-                "role": r["role"],
-                "content_preview": r["content"][:200],
-                "score": round(abs(r["score"]), 4) if r["score"] else 0,
-                "created_at": str(r["created_at"]),
-            }
-            for r in rows
-        ]
-    except Exception as e:
-        # FTS might fail for very short queries or special chars, fallback to LIKE
+    limit = min(limit, 100)  # Cap to prevent abuse
+    with get_db() as conn:
         try:
+            # Try FTS5 search first
             rows = conn.execute(
                 """SELECT cm.id, cm.session_id, cm.role, cm.content, cm.created_at,
                           cs.title as session_title,
-                          1.0 as score
-                   FROM chat_messages cm
+                          bm25(chat_messages_fts) as score
+                   FROM chat_messages_fts fts
+                   JOIN chat_messages cm ON cm.rowid = fts.rowid
                    JOIN chat_sessions cs ON cs.id = cm.session_id
-                   WHERE cm.content LIKE ?
-                   ORDER BY cm.created_at DESC
+                   WHERE chat_messages_fts MATCH ?
+                   ORDER BY score
                    LIMIT ?""",
-                (f"%{q}%", limit),
+                (q, limit),
             ).fetchall()
+
+            # Fallback to LIKE search if FTS5 returns no results (common for Chinese)
+            if not rows:
+                rows = conn.execute(
+                    """SELECT cm.id, cm.session_id, cm.role, cm.content, cm.created_at,
+                              cs.title as session_title,
+                              1.0 as score
+                       FROM chat_messages cm
+                       JOIN chat_sessions cs ON cs.id = cm.session_id
+                       WHERE cm.content LIKE ?
+                       ORDER BY cm.created_at DESC
+                       LIMIT ?""",
+                    (f"%{_escape_like(q)}%", limit),
+                ).fetchall()
+
             return [
                 {
                     "message_id": r["id"],
@@ -237,26 +152,52 @@ async def search_history(q: str, mode: str = "fulltext", limit: int = 20):
                     "session_title": r["session_title"],
                     "role": r["role"],
                     "content_preview": r["content"][:200],
-                    "score": 1.0,
+                    "score": round(abs(r["score"]), 4) if r["score"] else 0,
                     "created_at": str(r["created_at"]),
                 }
                 for r in rows
             ]
-        except:
-            return []
-    finally:
-        conn.close()
+        except Exception as e:
+            # FTS might fail for very short queries or special chars, fallback to LIKE
+            logger.warning("FTS search failed, falling back to LIKE: %s", e)
+            try:
+                rows = conn.execute(
+                    """SELECT cm.id, cm.session_id, cm.role, cm.content, cm.created_at,
+                              cs.title as session_title,
+                              1.0 as score
+                       FROM chat_messages cm
+                       JOIN chat_sessions cs ON cs.id = cm.session_id
+                       WHERE cm.content LIKE ?
+                       ORDER BY cm.created_at DESC
+                       LIMIT ?""",
+                    (f"%{_escape_like(q)}%", limit),
+                ).fetchall()
+                return [
+                    {
+                        "message_id": r["id"],
+                        "session_id": r["session_id"],
+                        "session_title": r["session_title"],
+                        "role": r["role"],
+                        "content_preview": r["content"][:200],
+                        "score": 1.0,
+                        "created_at": str(r["created_at"]),
+                    }
+                    for r in rows
+                ]
+            except Exception as e:
+                logger.error("LIKE search fallback also failed: %s", e)
+                return []
 
 
 # ── Sessions ───────────────────────────────────────────────
 
+
 @router.get("/sessions", response_model=list[ChatSessionResponse])
 async def list_sessions():
     """List all chat sessions."""
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM chat_sessions ORDER BY updated_at DESC"
+            "SELECT * FROM chat_sessions ORDER BY updated_at DESC LIMIT 500"
         ).fetchall()
         return [
             ChatSessionResponse(
@@ -268,28 +209,36 @@ async def list_sessions():
             )
             for r in rows
         ]
-    finally:
-        conn.close()
 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[ChatMessageResponse])
 async def get_session_messages(session_id: str):
     """Get all messages in a session, with citations."""
-    conn = get_connection()
-    try:
+    with get_db() as conn:
         messages = conn.execute(
             "SELECT * FROM chat_messages WHERE session_id=? ORDER BY created_at",
             (session_id,),
         ).fetchall()
 
-        result = []
-        for msg in messages:
-            # Fetch citations for this message
-            citations_rows = conn.execute(
-                "SELECT * FROM citations WHERE message_id=?", (msg["id"],)
-            ).fetchall()
+        if not messages:
+            return []
 
-            citations = [
+        # Batch-fetch all citations for this session's messages (fixes N+1)
+        msg_ids = [msg["id"] for msg in messages]
+        placeholders = ",".join("?" for _ in msg_ids)
+        citations_rows = conn.execute(
+            f"""SELECT * FROM citations WHERE message_id IN ({placeholders})
+                ORDER BY message_id, chunk_index""",
+            msg_ids,
+        ).fetchall()
+
+        # Group citations by message_id
+        citations_by_msg: dict[str, list[CitationData]] = {}
+        for c in citations_rows:
+            mid = c["message_id"]
+            if mid not in citations_by_msg:
+                citations_by_msg[mid] = []
+            citations_by_msg[mid].append(
                 CitationData(
                     doc_name=c["doc_name"],
                     page_num=c["page_num"],
@@ -297,33 +246,30 @@ async def get_session_messages(session_id: str):
                     chunk_index=c["chunk_index"],
                     text_preview=c["text_preview"],
                 )
-                for c in citations_rows
-            ]
+            )
 
-            result.append(ChatMessageResponse(
+        return [
+            ChatMessageResponse(
                 id=msg["id"],
                 role=msg["role"],
                 content=msg["content"],
-                citations=citations,
+                citations=citations_by_msg.get(msg["id"], []),
                 created_at=str(msg["created_at"]),
-            ))
-
-        return result
-    finally:
-        conn.close()
+            )
+            for msg in messages
+        ]
 
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
     """Delete a chat session and all its messages."""
-    conn = get_connection()
-    try:
-        conn.execute("DELETE FROM citations WHERE message_id IN "
-                     "(SELECT id FROM chat_messages WHERE session_id=?)",
-                     (session_id,))
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM citations WHERE message_id IN "
+            "(SELECT id FROM chat_messages WHERE session_id=?)",
+            (session_id,),
+        )
         conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session_id,))
         conn.execute("DELETE FROM chat_sessions WHERE id=?", (session_id,))
         conn.commit()
         return {"success": True}
-    finally:
-        conn.close()

@@ -40,16 +40,17 @@ import time
 import uuid
 
 from app.config import get_settings
-from app.db.database import get_connection
-from app.services.parser import DocumentParser
+from app.db.database import get_db
+from app.models.schemas import DebugInfo, RetrievedChunkInfo, TokenUsage
 from app.services.chunker import TextChunker
 from app.services.embedder import BaseEmbedder
-from app.services.vectorstore import VectorStore
-from app.services.retriever import Retriever, RetrievalResult
-from app.services.generator import Generator, GenerationResult
-from app.services.quality import batch_score_chunks
+from app.services.generator import GenerationResult, Generator
 from app.services.image_extractor import extract_pdf_images
-from app.models.schemas import DebugInfo, RetrievedChunkInfo, TokenUsage
+from app.services.parser import DocumentParser
+from app.services.quality import batch_score_chunks
+from app.services.reranker import CrossEncoderReranker
+from app.services.retriever import RetrievalResult, Retriever
+from app.services.vectorstore import VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,11 @@ class RAGPipeline:
         self.generator = generator
         self.parser = DocumentParser()
         self.settings = get_settings()
+        self.reranker = (
+            CrossEncoderReranker(self.settings.reranker_model)
+            if self.settings.reranker_enabled
+            else None
+        )
         self.chunker = TextChunker(
             chunk_size=self.settings.chunk_size,
             chunk_overlap=self.settings.chunk_overlap,
@@ -97,140 +103,166 @@ class RAGPipeline:
         settings = self.settings
 
         # Record document in SQLite
-        conn = get_connection()
         try:
-            conn.execute(
-                """INSERT INTO documents (id, filename, file_type, file_path, file_size, status, collection_id)
-                   VALUES (?, ?, ?, ?, ?, 'processing', ?)""",
-                (doc_id, filename, file_type, file_path, file_size, collection_id),
-            )
-            conn.commit()
-
-            # Step 1: Parse
-            logger.info("Parsing document: %s", filename)
-            parse_result = self.parser.parse(file_path, file_type)
-            if parse_result.error:
+            with get_db() as conn:
                 conn.execute(
-                    "UPDATE documents SET status='error', error_message=? WHERE id=?",
-                    (parse_result.error, doc_id),
+                    """INSERT INTO documents (id, filename, file_type, file_path, file_size, status, collection_id)
+                       VALUES (?, ?, ?, ?, ?, 'processing', ?)""",
+                    (doc_id, filename, file_type, file_path, file_size, collection_id),
                 )
                 conn.commit()
-                return {"doc_id": doc_id, "status": "error", "error": parse_result.error}
 
-            # Step 2: Chunk
-            logger.info("Chunking document: %s", filename)
-            chunks = self.chunker.chunk_segments(parse_result.segments)
-            if not chunks:
-                conn.execute(
-                    "UPDATE documents SET status='error', error_message='文档内容无法分块' WHERE id=?",
-                    (doc_id,),
+                # Step 1: Parse
+                logger.info("Parsing document: %s", filename)
+                parse_result = self.parser.parse(file_path, file_type)
+                if parse_result.error:
+                    conn.execute(
+                        "UPDATE documents SET status='error', error_message=? WHERE id=?",
+                        (parse_result.error, doc_id),
+                    )
+                    conn.commit()
+                    return {"doc_id": doc_id, "status": "error", "error": parse_result.error}
+
+                # Step 2: Chunk
+                logger.info("Chunking document: %s", filename)
+                chunks = self.chunker.chunk_segments(parse_result.segments)
+                if not chunks:
+                    conn.execute(
+                        "UPDATE documents SET status='error', error_message='文档内容无法分块' WHERE id=?",
+                        (doc_id,),
+                    )
+                    conn.commit()
+                    return {"doc_id": doc_id, "status": "error", "error": "文档内容无法分块"}
+
+                # Step 3: Embed
+                logger.info("Generating embeddings for %d chunks", len(chunks))
+                chunk_texts = [c.text for c in chunks]
+                embeddings = self.embedder.embed(chunk_texts)
+
+                # Step 4: Store in ChromaDB
+                chunk_ids = [str(uuid.uuid4()) for _ in chunks]
+                metadatas = [
+                    {
+                        "doc_id": doc_id,
+                        "doc_name": filename,
+                        "chunk_index": c.chunk_index,
+                        "page_num": c.page_num if c.page_num is not None else 0,
+                        "heading": c.heading or "",
+                        "collection_id": collection_id or "",
+                    }
+                    for c in chunks
+                ]
+
+                self.vector_store.add_chunks(
+                    chunk_ids=chunk_ids,
+                    embeddings=embeddings,
+                    texts=chunk_texts,
+                    metadatas=metadatas,
                 )
+
+                # Step 5: Store chunk metadata in SQLite
+                for i, chunk in enumerate(chunks):
+                    conn.execute(
+                        """INSERT INTO chunks (id, doc_id, chunk_index, text, page_num, heading, token_count)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            chunk_ids[i],
+                            doc_id,
+                            chunk.chunk_index,
+                            chunk.text,
+                            chunk.page_num,
+                            chunk.heading,
+                            chunk.token_count,
+                        ),
+                    )
+
+                # Step 6: Score chunk quality
+                logger.info("Scoring quality for %d chunks", len(chunks))
+                quality_scores = batch_score_chunks([c.text for c in chunks])
+                for i, (_chunk, score) in enumerate(zip(chunks, quality_scores, strict=True)):
+                    conn.execute(
+                        """INSERT OR REPLACE INTO chunk_quality (chunk_id, info_density, is_low_quality, reason)
+                           VALUES (?, ?, ?, ?)""",
+                        (
+                            chunk_ids[i],
+                            score["info_density"],
+                            1 if score["is_low_quality"] else 0,
+                            score["reason"],
+                        ),
+                    )
+                low_quality_count = sum(1 for s in quality_scores if s["is_low_quality"])
+                if low_quality_count > 0:
+                    logger.info(
+                        "Found %d low-quality chunks (will be deprioritized in search)",
+                        low_quality_count,
+                    )
+
+                # Step 7: Extract PDF images (Phase 4)
+                if file_type == "pdf":
+                    try:
+                        images_dir = os.path.join(settings.app_data_dir, "data", "chunk_images")
+                        extracted_images = extract_pdf_images(file_path, images_dir, doc_id)
+                        for img in extracted_images:
+                            # Link image to the closest chunk by page number
+                            matching_chunk_idx = None
+                            for i, c in enumerate(chunks):
+                                if c.page_num and c.page_num >= img["page_num"]:
+                                    matching_chunk_idx = i
+                                    break
+                            chunk_id_for_img = (
+                                chunk_ids[matching_chunk_idx]
+                                if matching_chunk_idx is not None
+                                else chunk_ids[0]
+                            )
+                            conn.execute(
+                                """INSERT INTO chunk_images (id, chunk_id, doc_id, image_path, image_type, page_num, width, height)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                                (
+                                    img["id"],
+                                    chunk_id_for_img,
+                                    doc_id,
+                                    img["image_path"],
+                                    img["image_type"],
+                                    img["page_num"],
+                                    img["width"],
+                                    img["height"],
+                                ),
+                            )
+                        if extracted_images:
+                            logger.info("Linked %d images to chunks", len(extracted_images))
+                    except Exception as e:
+                        logger.warning("Image extraction failed (non-critical): %s", e)
+
+                # Update document status
+                conn.execute(
+                    "UPDATE documents SET status='ready', chunk_count=? WHERE id=?",
+                    (len(chunks), doc_id),
+                )
+
+                # Update collection doc_count if applicable
+                if collection_id:
+                    conn.execute(
+                        "UPDATE collections SET doc_count = doc_count + 1 WHERE id=?",
+                        (collection_id,),
+                    )
+
                 conn.commit()
-                return {"doc_id": doc_id, "status": "error", "error": "文档内容无法分块"}
 
-            # Step 3: Embed
-            logger.info("Generating embeddings for %d chunks", len(chunks))
-            chunk_texts = [c.text for c in chunks]
-            embeddings = self.embedder.embed(chunk_texts)
-
-            # Step 4: Store in ChromaDB
-            chunk_ids = [str(uuid.uuid4()) for _ in chunks]
-            metadatas = [
-                {
-                    "doc_id": doc_id,
-                    "doc_name": filename,
-                    "chunk_index": c.chunk_index,
-                    "page_num": c.page_num if c.page_num is not None else 0,
-                    "heading": c.heading or "",
-                    "collection_id": collection_id or "",
-                }
-                for c in chunks
-            ]
-
-            self.vector_store.add_chunks(
-                chunk_ids=chunk_ids,
-                embeddings=embeddings,
-                texts=chunk_texts,
-                metadatas=metadatas,
-            )
-
-            # Step 5: Store chunk metadata in SQLite
-            for i, chunk in enumerate(chunks):
-                conn.execute(
-                    """INSERT INTO chunks (id, doc_id, chunk_index, text, page_num, heading, token_count)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (chunk_ids[i], doc_id, chunk.chunk_index, chunk.text,
-                     chunk.page_num, chunk.heading, chunk.token_count),
-                )
-
-            # Step 6: Score chunk quality
-            logger.info("Scoring quality for %d chunks", len(chunks))
-            quality_scores = batch_score_chunks([c.text for c in chunks])
-            for i, (chunk, score) in enumerate(zip(chunks, quality_scores)):
-                conn.execute(
-                    """INSERT OR REPLACE INTO chunk_quality (chunk_id, info_density, is_low_quality, reason)
-                       VALUES (?, ?, ?, ?)""",
-                    (chunk_ids[i], score["info_density"], 1 if score["is_low_quality"] else 0, score["reason"]),
-                )
-            low_quality_count = sum(1 for s in quality_scores if s["is_low_quality"])
-            if low_quality_count > 0:
-                logger.info("Found %d low-quality chunks (will be deprioritized in search)", low_quality_count)
-
-            # Step 7: Extract PDF images (Phase 4)
-            if file_type == "pdf":
-                try:
-                    images_dir = os.path.join(settings.app_data_dir, "data", "chunk_images")
-                    extracted_images = extract_pdf_images(file_path, images_dir, doc_id)
-                    for img in extracted_images:
-                        # Link image to the closest chunk by page number
-                        matching_chunk_idx = None
-                        for i, c in enumerate(chunks):
-                            if c.page_num and c.page_num >= img["page_num"]:
-                                matching_chunk_idx = i
-                                break
-                        chunk_id_for_img = chunk_ids[matching_chunk_idx] if matching_chunk_idx is not None else chunk_ids[0]
-                        conn.execute(
-                            """INSERT INTO chunk_images (id, chunk_id, doc_id, image_path, image_type, page_num, width, height)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                            (img["id"], chunk_id_for_img, doc_id, img["image_path"],
-                             img["image_type"], img["page_num"], img["width"], img["height"]),
-                        )
-                    if extracted_images:
-                        logger.info("Linked %d images to chunks", len(extracted_images))
-                except Exception as e:
-                    logger.warning("Image extraction failed (non-critical): %s", e)
-
-            # Update document status
-            conn.execute(
-                "UPDATE documents SET status='ready', chunk_count=? WHERE id=?",
-                (len(chunks), doc_id),
-            )
-
-            # Update collection doc_count if applicable
-            if collection_id:
-                conn.execute(
-                    "UPDATE collections SET doc_count = doc_count + 1 WHERE id=?",
-                    (collection_id,),
-                )
-
-            conn.commit()
-
-            logger.info("Document ingested: %s (%d chunks)", filename, len(chunks))
-            return {"doc_id": doc_id, "status": "ready", "chunk_count": len(chunks)}
+                logger.info("Document ingested: %s (%d chunks)", filename, len(chunks))
+                return {"doc_id": doc_id, "status": "ready", "chunk_count": len(chunks)}
 
         except Exception as e:
             logger.exception("Ingestion failed for %s", filename)
             try:
-                conn.execute(
-                    "UPDATE documents SET status='error', error_message=? WHERE id=?",
-                    (str(e), doc_id),
-                )
-                conn.commit()
-            except Exception:
-                pass
+                with get_db() as conn:
+                    conn.execute(
+                        "UPDATE documents SET status='error', error_message=? WHERE id=?",
+                        (str(e), doc_id),
+                    )
+                    conn.commit()
+            except Exception as inner_e:
+                logger.warning("Failed to update document status to 'error': %s", inner_e)
             return {"doc_id": doc_id, "status": "error", "error": str(e)}
-        finally:
-            conn.close()
 
     # ── Query ──────────────────────────────────────────────
 
@@ -281,17 +313,26 @@ class RAGPipeline:
             if rewritten_query != question:
                 logger.info("Query rewritten: '%s' → '%s'", question[:50], rewritten_query[:50])
 
-        # ── Step 1: Vector Retrieval ──────────────────────────
+        # ── Step 1: Hybrid Retrieval ──────────────────────────
         # Uses the REWRITTEN query for better retrieval results.
         # The retriever handles: embed query → ChromaDB search → threshold filter.
         # Returns chunks sorted by similarity score (highest first).
         retriever = Retriever(
             vector_store=self.vector_store,
             embedder=self.embedder,
-            top_k=settings.top_k,                    # default: 5
+            top_k=settings.top_k,  # default: 5
             similarity_threshold=settings.similarity_threshold,  # default: 0.3
+            hybrid_search_enabled=settings.hybrid_search_enabled,
+            candidate_multiplier=settings.retrieval_candidate_multiplier,
+            rrf_k=settings.rrf_k,
+            confidence_gate_enabled=settings.retrieval_confidence_gate_enabled,
+            vector_only_min_score=settings.vector_only_min_score,
+            reranker=self.reranker,
+            rerank_top_n=settings.reranker_top_n,
         )
-        retrieval_result: RetrievalResult = retriever.retrieve(rewritten_query, collection_id=collection_id)
+        retrieval_result: RetrievalResult = retriever.retrieve(
+            rewritten_query, collection_id=collection_id
+        )
 
         # If no chunks pass the threshold, generator will return a
         # "资料不足" message instead of hallucinating an answer.
@@ -303,9 +344,9 @@ class RAGPipeline:
         # History is passed as additional context (last 10 messages = 5 turns).
         gen_start = time.time()
         generation_result = await self.generator.generate(
-            query=question,                          # original question for LLM
-            chunks=retrieval_result.chunks,           # retrieved context
-            history=history,                         # multi-turn context
+            query=question,  # original question for LLM
+            chunks=retrieval_result.chunks,  # retrieved context
+            history=history,  # multi-turn context
         )
         gen_elapsed = (time.time() - gen_start) * 1000
         generation_result.generation_time_ms = gen_elapsed
@@ -320,13 +361,23 @@ class RAGPipeline:
             query=question,
             rewritten_query=rewritten_query if rewritten_query != question else None,
             embedding_model=settings.embedding_model,
+            retrieval_mode=retrieval_result.mode,
+            confidence_rejected=retrieval_result.confidence_rejected,
+            confidence_score=retrieval_result.confidence_score,
+            rejection_reason=retrieval_result.rejection_reason,
             top_k_chunks=[
                 RetrievedChunkInfo(
                     chunk_id=c.chunk_id,
-                    text_preview=c.text[:150],       # first 150 chars for preview
+                    text_preview=c.text[:150],  # first 150 chars for preview
                     similarity_score=round(c.score, 4),
                     doc_name=c.doc_name,
                     page_num=c.page_num,
+                    vector_score=(round(c.vector_score, 4) if c.vector_score is not None else None),
+                    lexical_score=(
+                        round(c.lexical_score, 4) if c.lexical_score is not None else None
+                    ),
+                    rerank_score=(round(c.rerank_score, 4) if c.rerank_score is not None else None),
+                    retrieval_sources=c.retrieval_sources,
                 )
                 for c in retrieval_result.chunks
             ],
@@ -347,42 +398,42 @@ class RAGPipeline:
 
     def delete_document(self, doc_id: str) -> dict:
         """Delete a document and all associated data (vectors + metadata + file)."""
-        conn = get_connection()
-        try:
-            # Get document info
-            row = conn.execute(
-                "SELECT file_path, filename FROM documents WHERE id=?", (doc_id,)
-            ).fetchone()
-            if not row:
-                return {"success": False, "error": "Document not found"}
-
-            file_path = row["file_path"]
-            filename = row["filename"]
-
-            # Step 1: Delete from ChromaDB
-            chunks_deleted = self.vector_store.delete_by_doc_id(doc_id)
-
-            # Step 2: Delete from SQLite (cascades via foreign keys)
-            conn.execute("DELETE FROM citations WHERE message_id IN "
-                         "(SELECT id FROM chat_messages WHERE session_id IN "
-                         "(SELECT session_id FROM documents WHERE id=?))", (doc_id,))
-            conn.execute("DELETE FROM chunks WHERE doc_id=?", (doc_id,))
-            conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
-            conn.commit()
-
-            # Step 3: Delete local file
+        with get_db() as conn:
             try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-            except OSError as e:
-                logger.warning("Could not delete file %s: %s", file_path, e)
+                # Get document info
+                row = conn.execute(
+                    "SELECT file_path, filename FROM documents WHERE id=?", (doc_id,)
+                ).fetchone()
+                if not row:
+                    return {"success": False, "error": "Document not found"}
 
-            logger.info("Deleted document: %s (%d chunks removed)", filename, chunks_deleted)
-            return {"success": True, "chunks_deleted": chunks_deleted}
+                file_path = row["file_path"]
+                filename = row["filename"]
 
-        except Exception as e:
-            conn.rollback()
-            logger.exception("Failed to delete document %s", doc_id)
-            return {"success": False, "error": str(e)}
-        finally:
-            conn.close()
+                # Step 1: Delete from ChromaDB
+                chunks_deleted = self.vector_store.delete_by_doc_id(doc_id)
+
+                # Step 2: Delete from SQLite
+                # citations.chunk_id → chunks.id → chunks.doc_id (documents has no session_id)
+                conn.execute(
+                    "DELETE FROM citations WHERE chunk_id IN (SELECT id FROM chunks WHERE doc_id=?)",
+                    (doc_id,),
+                )
+                conn.execute("DELETE FROM chunks WHERE doc_id=?", (doc_id,))
+                conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+                conn.commit()
+
+                # Step 3: Delete local file
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except OSError as e:
+                    logger.warning("Could not delete file %s: %s", file_path, e)
+
+                logger.info("Deleted document: %s (%d chunks removed)", filename, chunks_deleted)
+                return {"success": True, "chunks_deleted": chunks_deleted}
+
+            except Exception as e:
+                conn.rollback()
+                logger.exception("Failed to delete document %s", doc_id)
+                return {"success": False, "error": str(e)}

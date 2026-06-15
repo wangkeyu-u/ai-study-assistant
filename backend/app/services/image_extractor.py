@@ -34,45 +34,50 @@ def extract_pdf_images(pdf_path: str, output_dir: str, doc_id: str) -> list[dict
 
     try:
         doc = fitz.open(pdf_path)
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            image_list = page.get_images(full=True)
+        try:
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                image_list = page.get_images(full=True)
 
-            for img_idx, img_info in enumerate(image_list):
-                xref = img_info[0]
-                try:
-                    base_image = doc.extract_image(xref)
-                    if not base_image:
-                        continue
+                for _img_idx, img_info in enumerate(image_list):
+                    xref = img_info[0]
+                    try:
+                        base_image = doc.extract_image(xref)
+                        if not base_image:
+                            continue
 
-                    image_bytes = base_image["image"]
-                    width = base_image.get("width", 0)
-                    height = base_image.get("height", 0)
-                    ext = base_image.get("ext", "png")
+                        image_bytes = base_image["image"]
+                        width = base_image.get("width", 0)
+                        height = base_image.get("height", 0)
+                        ext = base_image.get("ext", "png")
 
-                    # Skip very small images (icons, logos)
-                    if width < 50 or height < 50:
-                        continue
+                        # Skip very small images (icons, logos)
+                        if width < 50 or height < 50:
+                            continue
 
-                    img_id = str(uuid.uuid4())
-                    img_filename = f"{img_id}.{ext}"
-                    img_path = os.path.join(doc_dir, img_filename)
+                        img_id = str(uuid.uuid4())
+                        img_filename = f"{img_id}.{ext}"
+                        img_path = os.path.join(doc_dir, img_filename)
 
-                    with open(img_path, "wb") as f:
-                        f.write(image_bytes)
+                        with open(img_path, "wb") as f:
+                            f.write(image_bytes)
 
-                    images.append({
-                        "id": img_id,
-                        "image_path": img_path,
-                        "image_type": "image",
-                        "page_num": page_num + 1,
-                        "width": width,
-                        "height": height,
-                    })
-                except Exception as e:
-                    logger.warning("Failed to extract image xref=%d on page %d: %s", xref, page_num, e)
-
-        doc.close()
+                        images.append(
+                            {
+                                "id": img_id,
+                                "image_path": img_path,
+                                "image_type": "image",
+                                "page_num": page_num + 1,
+                                "width": width,
+                                "height": height,
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to extract image xref=%d on page %d: %s", xref, page_num, e
+                        )
+        finally:
+            doc.close()
         logger.info("Extracted %d images from %s", len(images), os.path.basename(pdf_path))
     except Exception as e:
         logger.warning("Failed to open PDF for image extraction: %s", e)

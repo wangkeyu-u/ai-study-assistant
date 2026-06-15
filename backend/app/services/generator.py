@@ -10,13 +10,16 @@ from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
 
+from app.services.context_utils import build_context_text
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class CitationMark:
     """A citation reference found in the generated text."""
-    ref_index: int          # [1] → 1, [2] → 2
+
+    ref_index: int  # [1] → 1, [2] → 2
     chunk_id: str
     doc_name: str
     page_num: int | None
@@ -27,6 +30,7 @@ class CitationMark:
 @dataclass
 class GenerationResult:
     """Result of LLM generation."""
+
     content: str
     citations: list[CitationMark] = field(default_factory=list)
     prompt_tokens: int = 0
@@ -50,11 +54,6 @@ SYSTEM_PROMPT = """你是一个学习助手。你的任务是基于提供的参�
 
 HISTORY_NOTE = """6. 用户可能在之前的对话中问过相关问题，请参考对话上下文来理解用户的意图，但回答内容仍然必须基于参考资料。"""
 
-CONTEXT_TEMPLATE = """[{index}] 文档: {doc_name}{page_info}
-{heading_info}---
-{chunk_text}
-"""
-
 
 class Generator:
     """Generate answers using LLM with retrieved context."""
@@ -73,31 +72,21 @@ class Generator:
             )
             self.model = model
         else:
-            kwargs = {"api_key": api_key}
+            kwargs: dict = {"api_key": api_key}
             if base_url:
                 kwargs["base_url"] = base_url
-            self.client = AsyncOpenAI(**kwargs)
+            self.client = AsyncOpenAI(**kwargs)  # type: ignore[arg-type]
             self.model = model
 
     def build_prompt(self, query: str, chunks: list, history: list[dict] | None = None) -> str:
         """Build the full prompt with context from retrieved chunks."""
-        context_parts = []
-        for i, chunk in enumerate(chunks, 1):
-            page_info = f", 第{chunk.page_num}页" if chunk.page_num else ""
-            heading_info = f"标题: {chunk.heading}\n" if chunk.heading else ""
-            context_parts.append(CONTEXT_TEMPLATE.format(
-                index=i,
-                doc_name=chunk.doc_name,
-                page_info=page_info,
-                heading_info=heading_info,
-                chunk_text=chunk.text,
-            ))
-
-        context = "\n".join(context_parts)
+        context = build_context_text(chunks)
         history_note = HISTORY_NOTE if history else ""
         return SYSTEM_PROMPT.format(history_note=history_note, context=context)
 
-    async def generate(self, query: str, chunks: list, history: list[dict] | None = None) -> GenerationResult:
+    async def generate(
+        self, query: str, chunks: list, history: list[dict] | None = None
+    ) -> GenerationResult:
         """Generate a complete answer (non-streaming).
 
         Args:
@@ -118,7 +107,7 @@ class Generator:
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
-                messages=messages,
+                messages=messages,  # type: ignore[arg-type]
                 temperature=0.3,
             )
         except Exception as e:
@@ -133,7 +122,7 @@ class Generator:
         usage = response.usage
 
         # Extract citations from the response
-        citations = self._extract_citations(content, chunks)
+        citations = self.extract_citations(content, chunks)
 
         return GenerationResult(
             content=content,
@@ -153,23 +142,25 @@ class Generator:
     ) -> AsyncGenerator[dict, None]:
         """Generate answer with streaming tokens."""
         if not chunks:
-            yield {"type": "token", "text": "根据现有资料，没有找到足够的信息来回答这个问题。请上传相关资料后再试。"}
+            yield {
+                "type": "token",
+                "text": "根据现有资料，没有找到足够的信息来回答这个问题。请上传相关资料后再试。",
+            }
             yield {"type": "done"}
             return
 
-        prompt = self.build_prompt(query, chunks, history)
         messages = self._build_messages(query, chunks, history)
         full_text = ""
 
         try:
             stream = await self.client.chat.completions.create(
                 model=self.model,
-                messages=messages,
+                messages=messages,  # type: ignore[arg-type]
                 temperature=0.3,
                 stream=True,
             )
 
-            async for chunk in stream:
+            async for chunk in stream:  # type: ignore[union-attr]
                 if chunk.choices and chunk.choices[0].delta.content:
                     text = chunk.choices[0].delta.content
                     full_text += text
@@ -182,23 +173,26 @@ class Generator:
             return
 
         # After streaming complete, extract citations
-        citations = self._extract_citations(full_text, chunks)
-        yield {"type": "citations", "citations": [
-            {
-                "doc_name": c.doc_name,
-                "page_num": c.page_num,
-                "chunk_id": c.chunk_id,
-                "chunk_index": c.chunk_index,
-                "text_preview": c.text_preview,
-            }
-            for c in citations
-        ]}
+        citations = self.extract_citations(full_text, chunks)
+        yield {
+            "type": "citations",
+            "citations": [
+                {
+                    "doc_name": c.doc_name,
+                    "page_num": c.page_num,
+                    "chunk_id": c.chunk_id,
+                    "chunk_index": c.chunk_index,
+                    "text_preview": c.text_preview,
+                }
+                for c in citations
+            ],
+        }
 
         yield {"type": "done"}
 
     # ── Citation extraction ────────────────────────────────
 
-    def _extract_citations(
+    def extract_citations(
         self,
         text: str,
         chunks: list,
@@ -217,27 +211,17 @@ class Generator:
             chunk_pos = ref_idx - 1
             if 0 <= chunk_pos < len(chunks):
                 chunk = chunks[chunk_pos]
-                citations.append(CitationMark(
-                    ref_index=ref_idx,
-                    chunk_id=chunk.chunk_id,
-                    doc_name=chunk.doc_name,
-                    page_num=chunk.page_num,
-                    chunk_index=chunk.chunk_index,
-                    text_preview=chunk.text[:200],
-                ))
+                citations.append(
+                    CitationMark(
+                        ref_index=ref_idx,
+                        chunk_id=chunk.chunk_id,
+                        doc_name=chunk.doc_name,
+                        page_num=chunk.page_num,
+                        chunk_index=chunk.chunk_index,
+                        text_preview=chunk.text[:200],
+                    )
+                )
                 seen.add(ref_idx)
-
-        # If no explicit citations found but we have chunks, add them as implicit citations
-        if not citations and chunks:
-            for i, chunk in enumerate(chunks):
-                citations.append(CitationMark(
-                    ref_index=i + 1,
-                    chunk_id=chunk.chunk_id,
-                    doc_name=chunk.doc_name,
-                    page_num=chunk.page_num,
-                    chunk_index=chunk.chunk_index,
-                    text_preview=chunk.text[:200],
-                ))
 
         return citations
 
@@ -248,10 +232,7 @@ class Generator:
         for i, chunk in enumerate(chunks, 1):
             page_info = f", 第{chunk.page_num}页" if chunk.page_num else ""
             heading_info = f" (标题: {chunk.heading})" if chunk.heading else ""
-            parts.append(
-                f"[{i}] 文档: {chunk.doc_name}{page_info}{heading_info}\n"
-                f"{chunk.text}"
-            )
+            parts.append(f"[{i}] 文档: {chunk.doc_name}{page_info}{heading_info}\n{chunk.text}")
         return "\n\n---\n\n".join(parts)
 
     def _build_messages(
@@ -305,11 +286,13 @@ class Generator:
         # Inject conversation history for multi-turn context
         # Capped at 10 messages (5 turns) to control token usage
         if has_history:
-            for msg in history[-10:]:
-                messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"],
-                })
+            for msg in history[-10:]:  # type: ignore[index]
+                messages.append(
+                    {
+                        "role": msg["role"],
+                        "content": msg["content"],
+                    }
+                )
 
         # Current user query is always the last message
         messages.append({"role": "user", "content": query})
@@ -360,8 +343,7 @@ class Generator:
         # This provides enough context without exceeding token limits
         recent = history[-6:]
         conv_text = "\n".join(
-            f"{'用户' if m['role'] == 'user' else '助手'}: {m['content'][:200]}"
-            for m in recent
+            f"{'用户' if m['role'] == 'user' else '助手'}: {m['content'][:200]}" for m in recent
         )
 
         rewrite_prompt = (
@@ -379,7 +361,7 @@ class Generator:
                 temperature=0.1,
                 max_tokens=200,
             )
-            rewritten = response.choices[0].message.content.strip()
+            rewritten = (response.choices[0].message.content or "").strip()
             logger.info("Query rewritten: '%s' -> '%s'", query, rewritten)
             return rewritten
         except Exception as e:

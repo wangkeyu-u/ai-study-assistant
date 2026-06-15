@@ -1,0 +1,45 @@
+{"query":"人工智能的核心目标包括哪些能力？","relevant_texts":["推理、学习、感知、理解自然语言和决策"]}
+{"query":"AI主要希望创建什么样的系统？","relevant_texts":["创建能够模拟人类智能行为的系统"]}
+{"query":"机器学习和人工智能是什么关系？","relevant_texts":["机器学习（Machine Learning）是人工智能中最重要的子领域之一"]}
+{"query":"机器学习为什么不需要人为写出所有规则？","relevant_texts":["从数据中自动学习和改进，而不需要显式编程"]}
+{"query":"机器学习最基本的思想是什么？","relevant_texts":["通过算法从数据中发现模式和规律"]}
+{"query":"人工智能属于计算机科学的什么领域？","relevant_texts":["计算机科学的一个重要分支"]}
+{"query":"Machine Learning 的中文含义是什么？","relevant_texts":["机器学习（Machine Learning）"]}
+{"query":"系统怎样从数据中获得预测能力？","relevant_texts":["从数据中自动学习和改进"]}
+{"query":"机器学习主要分为哪三种类型？","relevant_texts":["监督学习（Supervised Learning）","无监督学习（Unsupervised Learning）","强化学习（Reinforcement Learning）"]}
+{"query":"监督学习使用什么样的训练数据？","relevant_texts":["监督学习使用带标签的训练数据"]}
+{"query":"分类和回归属于哪一类学习任务？","relevant_texts":["常见任务包括分类和回归"]}
+{"query":"监督学习有哪些典型算法？","relevant_texts":["决策树、支持向量机"]}
+{"query":"垃圾邮件过滤和信用评分通常使用什么学习方式？","relevant_texts":["垃圾邮件过滤、图像识别"]}
+{"query":"无监督学习试图从数据中发现什么？","relevant_texts":["从未标记的数据中发现隐藏的结构和模式"]}
+{"query":"K-Means、DBSCAN、PCA分别属于哪类方法？","relevant_texts":["K-Means、DBSCAN"]}
+{"query":"客户分群和异常检测适合使用哪类机器学习？","relevant_texts":["客户分群、异常检测、推荐系统"]}
+{"query":"强化学习如何逐步优化策略？","relevant_texts":["通过试错获得奖励或惩罚，逐步优化策略"]}
+{"query":"Q-Learning、Policy Gradient 和 PPO 属于什么算法？","relevant_texts":["Q-Learning、Policy Gradient、PPO"]}
+{"query":"自动驾驶和机器人控制可采用什么学习范式？","relevant_texts":["游戏AI、机器人控制、自动驾驶"]}
+{"query":"强化学习中的智能体如何学习？","relevant_texts":["通过智能体与环境的交互来学习最优行为策略"]}
+{"query":"深度学习主要依赖什么模型结构？","relevant_texts":["使用多层神经网络来处理复杂的数据"]}
+{"query":"CNN最适合处理哪些任务？","relevant_texts":["图像分类、目标检测、语义分割"]}
+{"query":"卷积神经网络怎样提取图像特征？","relevant_texts":["通过卷积层自动提取空间特征"]}
+{"query":"RNN通常用于处理什么类型的数据？","relevant_texts":["适用于序列数据处理"]}
+{"query":"LSTM和GRU解决了RNN的什么问题？","relevant_texts":["解决了长距离依赖问题"]}
+{"query":"Transformer是什么时候由谁提出的？","relevant_texts":["2017年由Google提出"]}
+{"query":"Transformer架构的核心机制是什么？","relevant_texts":["基于自注意力机制"]}
+{"query":"GPT、BERT和T5基于哪种架构？","relevant_texts":["GPT、BERT、T5等模型都基于Transformer"]}
+{"query":"RAG回答问题的基本流程是什么？","relevant_texts":["先从知识库中检索相关文档片段，再将其作为上下文"]}
+{"query":"检索增强生成能带来什么好处？","relevant_texts":["有效减少幻觉并提供可溯源的答案"]}
+{"query":"准确率、精确率和召回率分别表示什么？","relevant_texts":["准确率（Accuracy）：正确预测的比例","精确率（Precision）：正类预测中真正例的比例","召回率（Recall）：真正例占所有正例的比例"]}
+{"query":"F1分数是如何定义的？","relevant_texts":["精确率和召回率的调和平均值"]}
+{"query":"什么是模型过拟合？","relevant_texts":["在训练数据上表现很好但在新数据上泛化能力差"]}
+{"query":"有哪些方法可以缓解过拟合？","relevant_texts":["正则化、Dropout、早停、数据增强"]}
+{"query":"模型欠拟合时应该如何改善？","relevant_texts":["需要增加模型复杂度"]}
+{"query":"向量嵌入的作用是什么？","relevant_texts":["将文本、图像等高维数据映射到低维向量空间"]}
+{"query":"为什么语义相似内容可以通过向量检索找到？","relevant_texts":["语义相似的内容距离更近"]}
+{"query":"常见的文本嵌入模型有哪些？","relevant_texts":["Word2Vec、GloVe、BERT嵌入"]}
+{"query":"哪些产品属于向量数据库？","relevant_texts":["ChromaDB、Pinecone、Milvus、Weaviate"]}
+{"query":"向量数据库常用什么近似最近邻索引？","relevant_texts":["近似最近邻搜索（ANN），如HNSW索引"]}
+{"query":"这份资料有没有介绍量子纠缠实验？","expect_no_results":true}
+{"query":"文档中是否说明了法国大革命的起因？","expect_no_results":true}
+{"query":"教材有没有给出红烧肉的制作步骤？","expect_no_results":true}
+{"query":"资料中是否讨论了马来西亚签证政策？","expect_no_results":true}
+{"query":"文档有没有说明太阳系各行星的公转周期？","expect_no_results":true}

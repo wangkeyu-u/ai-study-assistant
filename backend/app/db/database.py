@@ -1,8 +1,8 @@
 """SQLite database initialization and connection management."""
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-
 
 _db_path: str | None = None
 
@@ -21,17 +21,34 @@ def init_db(db_path: str) -> None:
 
     # Migration: add collection_id to documents if not exists
     try:
-        conn.execute("ALTER TABLE documents ADD COLUMN collection_id TEXT REFERENCES collections(id)")
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN collection_id TEXT REFERENCES collections(id)"
+        )
         conn.commit()
     except sqlite3.OperationalError:
         pass  # Column already exists
 
-    # Migration: populate FTS from existing messages
-    try:
-        conn.execute("INSERT INTO chat_messages_fts(chat_messages_fts) VALUES('rebuild')")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # FTS already populated or table just created
+    # Populate newly introduced external-content FTS indexes exactly once.
+    # Changing the marker version forces a rebuild after future tokenizer or
+    # schema changes without adding startup cost for every launch.
+    fts_migrations = (
+        ("chat_messages_fts", "chat_messages_fts_v1"),
+        ("chunks_fts", "chunks_fts_trigram_v1"),
+    )
+    for fts_table, migration_key in fts_migrations:
+        try:
+            applied = conn.execute(
+                "SELECT 1 FROM app_metadata WHERE key=?", (migration_key,)
+            ).fetchone()
+            if not applied:
+                conn.execute(f"INSERT INTO {fts_table}({fts_table}) VALUES('rebuild')")
+                conn.execute(
+                    "INSERT INTO app_metadata (key, value) VALUES (?, CURRENT_TIMESTAMP)",
+                    (migration_key,),
+                )
+                conn.commit()
+        except sqlite3.OperationalError:
+            pass  # FTS5 may be unavailable in a custom SQLite build
 
     conn.close()
 
@@ -46,9 +63,36 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def get_db():
+    """Context manager that yields a connection and auto-closes it.
+
+    Usage:
+        with get_db() as conn:
+            rows = conn.execute("SELECT ...").fetchall()
+
+    This replaces the repetitive pattern:
+        conn = get_connection()
+        try:
+            ...
+        finally:
+            conn.close()
+    """
+    conn = get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 # ── Schema ─────────────────────────────────────────────────
 
 _SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS app_metadata (
+    key           TEXT PRIMARY KEY,
+    value         TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS collections (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL UNIQUE,
@@ -226,6 +270,33 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chat_messages_fts USING fts5(
 -- Trigger to keep FTS in sync
 CREATE TRIGGER IF NOT EXISTS chat_messages_ai AFTER INSERT ON chat_messages BEGIN
     INSERT INTO chat_messages_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+
+-- Chunk full-text index for hybrid retrieval. The trigram tokenizer supports
+-- substring matching for both Chinese text and ordinary English terms.
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+    text,
+    heading,
+    content='chunks',
+    content_rowid='rowid',
+    tokenize='trigram'
+);
+
+CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
+    INSERT INTO chunks_fts(rowid, text, heading)
+    VALUES (new.rowid, new.text, COALESCE(new.heading, ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
+    INSERT INTO chunks_fts(chunks_fts, rowid, text, heading)
+    VALUES ('delete', old.rowid, old.text, COALESCE(old.heading, ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
+    INSERT INTO chunks_fts(chunks_fts, rowid, text, heading)
+    VALUES ('delete', old.rowid, old.text, COALESCE(old.heading, ''));
+    INSERT INTO chunks_fts(rowid, text, heading)
+    VALUES (new.rowid, new.text, COALESCE(new.heading, ''));
 END;
 
 -- 概念表（Phase 5 知识图谱）

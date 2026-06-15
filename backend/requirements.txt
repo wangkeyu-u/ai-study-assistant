@@ -5,6 +5,8 @@ python-multipart==0.0.18
 
 # === Database ===
 chromadb==0.6.3
+# ChromaDB 0.6.x still uses the pre-6.0 capture() signature.
+posthog<6.0.0
 
 # === Document Processing ===
 pymupdf==1.25.1
@@ -16,6 +18,5 @@ openai==1.59.6
 pydantic==2.10.4
 pydantic-settings==2.7.1
 
-# === Optional: Local Embedding Model ===
-# Uncomment below to use local embeddings instead of OpenAI API
-# sentence-transformers==3.3.1
+# Local embeddings and reranking are intentionally isolated in
+# requirements-local.txt because they install the much larger PyTorch stack.

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import Documents from './pages/Documents';
 import Chat from './pages/Chat';
 import Quiz from './pages/Quiz';
@@ -6,102 +7,88 @@ import Dashboard from './pages/Dashboard';
 import KnowledgeGraph from './pages/KnowledgeGraph';
 import Settings from './pages/Settings';
 
+const NAV_ITEMS = [
+  { to: '/', labelKey: 'nav.documents', icon: '▤', end: true },
+  { to: '/chat', labelKey: 'nav.chat', icon: '◇' },
+  { to: '/quiz', labelKey: 'nav.quiz', icon: '✓' },
+  { to: '/dashboard', labelKey: 'nav.dashboard', icon: '⌁' },
+  { to: '/knowledge-graph', labelKey: 'nav.knowledgeGraph', icon: '⌘' },
+] as const;
+
 function App() {
+  const { t, i18n } = useTranslation();
+
+  const toggleLanguage = () => {
+    const next = i18n.language === 'en-US' ? 'zh-CN' : 'en-US';
+    i18n.changeLanguage(next);
+  };
+
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `nav-spell ${isActive ? 'is-active' : ''}`;
+
   return (
-    <BrowserRouter>
-      <div className="flex h-screen bg-gray-50">
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <div className="app-shell flex h-screen">
         {/* Sidebar */}
-        <nav className="w-56 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col shadow-xl">
-          <div className="p-5 border-b border-slate-700/50">
-            <h1 className="text-lg font-bold text-white tracking-tight">AI Study Assistant</h1>
-            <p className="text-xs text-slate-400 mt-1">RAG-Powered Learning Tool</p>
+        <nav className="app-sidebar w-60 flex flex-col">
+          <div className="brand-lockup">
+            <div className="brand-orbit" aria-hidden="true">
+              <span className="brand-core" />
+              <span className="brand-satellite brand-satellite-one" />
+              <span className="brand-satellite brand-satellite-two" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold text-white tracking-tight truncate">
+                {t('nav.appTitle')}
+              </h1>
+              <p className="text-[11px] text-slate-400 mt-0.5 truncate">{t('nav.appSubtitle')}</p>
+            </div>
           </div>
-          <div className="flex-1 p-3 space-y-1">
-            <NavLink
-              to="/"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                  isActive
-                    ? 'bg-white/10 text-white font-medium shadow-sm backdrop-blur-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`
-              }
-            >
-              <span className="text-base w-6 text-center">📄</span> 文档管理
-            </NavLink>
-            <NavLink
-              to="/chat"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                  isActive
-                    ? 'bg-white/10 text-white font-medium shadow-sm backdrop-blur-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`
-              }
-            >
-              <span className="text-base w-6 text-center">💬</span> 智能问答
-            </NavLink>
-            <NavLink
-              to="/quiz"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                  isActive
-                    ? 'bg-white/10 text-white font-medium shadow-sm backdrop-blur-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`
-              }
-            >
-              <span className="text-base w-6 text-center">✍️</span> 学习测验
-            </NavLink>
-            <NavLink
-              to="/dashboard"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                  isActive
-                    ? 'bg-white/10 text-white font-medium shadow-sm backdrop-blur-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`
-              }
-            >
-              <span className="text-base w-6 text-center">📊</span> 学习看板
-            </NavLink>
-            <NavLink
-              to="/knowledge-graph"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                  isActive
-                    ? 'bg-white/10 text-white font-medium shadow-sm backdrop-blur-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`
-              }
-            >
-              <span className="text-base w-6 text-center">🔗</span> 知识图谱
+          <div className="flex-1 px-3 py-5 space-y-1.5">
+            <p className="sidebar-eyebrow">Workspace</p>
+            {NAV_ITEMS.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={'end' in item && item.end}
+                className={navLinkClass}
+              >
+                <span className="nav-glyph" aria-hidden="true">
+                  {item.icon}
+                </span>
+                <span className="truncate">{t(item.labelKey)}</span>
+                <span className="nav-spark" aria-hidden="true" />
+              </NavLink>
+            ))}
+          </div>
+          <div className="px-3 pb-2">
+            <NavLink to="/settings" className={navLinkClass}>
+              <span className="nav-glyph" aria-hidden="true">
+                ⚙
+              </span>
+              <span>{t('nav.settings')}</span>
+              <span className="nav-spark" aria-hidden="true" />
             </NavLink>
           </div>
-          <div className="px-3 pb-3">
-            <NavLink
-              to="/settings"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                  isActive
-                    ? 'bg-white/10 text-white font-medium shadow-sm backdrop-blur-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`
-              }
-            >
-              <span className="text-base w-6 text-center">⚙️</span> 设置
-            </NavLink>
+          {/* Language switcher */}
+          <div className="px-3 pb-4">
+            <button onClick={toggleLanguage} className="language-switch">
+              <span className={i18n.language === 'zh-CN' ? 'text-white font-medium' : ''}>中</span>
+              <span className="text-slate-600">/</span>
+              <span className={i18n.language === 'en-US' ? 'text-white font-medium' : ''}>EN</span>
+            </button>
           </div>
-          <div className="p-4 border-t border-slate-700/50">
-            <div className="flex items-center justify-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <p className="text-xs text-slate-500">v1.0.0</p>
+          <div className="px-4 py-4 border-t border-white/[0.06]">
+            <div className="system-status">
+              <span className="status-pulse" />
+              <span className="text-[11px] text-slate-400">Local workspace</span>
+              <span className="ml-auto text-[10px] text-slate-600">v1.0</span>
             </div>
           </div>
         </nav>
 
         {/* Main content */}
-        <main className="flex-1 overflow-hidden">
+        <main className="app-main flex-1 overflow-hidden">
           <Routes>
             <Route path="/" element={<Documents />} />
             <Route path="/chat" element={<Chat />} />

@@ -1,0 +1,2 @@
+# Install after requirements.txt when using local embeddings or reranking.
+sentence-transformers==5.5.1
