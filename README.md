@@ -1,36 +1,35 @@
 # AI Study Assistant
 
-[![CI](https://github.com/wangkeyu-u/ai-study-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/wangkeyu-u/ai-study-assistant/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-RAG-009688)
 ![React](https://img.shields.io/badge/React-TypeScript-61DAFB)
 ![Local First](https://img.shields.io/badge/Local--First-Privacy-success)
 
-本地优先的 RAG 学习助手，把学习资料转化为可问答、可引用、可复习的个人知识库。
+AI Study Assistant is a local-first RAG learning platform that turns PDFs, Markdown files, text notes, and study materials into a searchable, cited, quiz-ready personal knowledge base.
 
-AI Study Assistant is a local-first RAG learning platform that turns PDFs, notes, and Markdown files into a searchable, cited, quiz-ready personal knowledge base.
+It is designed as more than a chat-with-docs demo: the project includes hybrid retrieval, multi-hop query planning, citation validation, answer quality gates, study workflows, a knowledge graph, and a polished React interface for daily learning.
 
-## 项目亮点
+## Highlights
 
-- **生产级 RAG 检索链路**：ChromaDB 向量召回 + SQLite FTS5 关键词召回 + RRF 融合排序 + confidence gate，兼顾语义召回、精确关键词和无答案拒答。
-- **多跳问题处理**：对复合问题进行 deterministic query decomposition，多子查询检索后再 RRF 融合，使用独立 `Recall@K` gate 评估多证据覆盖。
-- **引用安全机制**：生成后进行句级 citation validation，缺引用或引用越界时自动替换为安全拒答，避免无依据回答进入 UI 和历史记录。
-- **可量化质量评测**：内置 isolated retrieval eval、hard-negative eval、multi-hop eval、answer/citation quality eval，当前 hybrid 检索基线达到 `MRR=1.000 / Hit@1=1.000 / NoAnswer=1.000`。
-- **完整学习闭环**：资料上传、分块入库、问答溯源、测验生成、错题复习、Anki 导出、知识图谱和学习看板一体化。
-- **本地优先与可观测**：SQLite/Chroma 数据保存在本机，Debug Panel 展示 rewritten query、retrieval queries、召回 chunk、token 和延迟指标。
+- **Production-minded RAG pipeline**: ChromaDB vector retrieval, SQLite FTS5 keyword retrieval, Reciprocal Rank Fusion, confidence gating, and no-answer handling.
+- **Multi-hop retrieval**: compound questions are decomposed into focused subqueries, retrieved independently, and fused with RRF to improve evidence coverage.
+- **Citation safety**: generated answers are checked with sentence-level citation validation; uncited or out-of-range factual claims are replaced with a safe refusal.
+- **Measurable quality gates**: isolated retrieval eval, hard-negative eval, multi-hop recall eval, and answer/citation quality eval are built into the repo.
+- **Learning workflow**: upload documents, ask cited questions, generate quizzes, review mistakes, export Anki cards, and explore a concept graph.
+- **Local-first storage**: documents, SQLite metadata, and ChromaDB indexes live on the user's machine.
+- **Debuggability**: the Debug Panel exposes rewritten queries, retrieval subqueries, retrieved chunks, retrieval sources, token usage, and latency.
 
-## 核心特性
+Current isolated hybrid retrieval baseline:
 
-- **资料即知识库**：上传 PDF/Markdown/TXT，自动解析、分块、建立向量索引
-- **问答有据可依**：每个回答标注来源文档、页码、chunk 编号，点击查看原文
-- **混合检索**：ChromaDB 向量召回 + SQLite FTS5 关键词召回，通过 RRF 融合排序
-- **多跳检索**：复合问题自动拆成多个子查询，融合多路召回结果提升证据覆盖
-- **Multi-Agent 智能路由**：Supervisor 自动判断意图，分配给 Tutor/Examiner/Summarizer
-- **知识图谱可视化**：自动提取概念和关系，D3.js 交互式展示
-- **学习闭环**：上传 → 提问 → 测验 → 错题复习 → Anki 导出
-- **数据完全本地**：所有数据保存在本地，隐私可控
+| Metric | Value |
+|---|---:|
+| MRR | 1.000 |
+| Hit@1 | 1.000 |
+| Hit@3 | 1.000 |
+| No-answer accuracy | 1.000 |
+| HardNeg@1 | 1.000 |
 
-## RAG 架构
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -48,217 +47,175 @@ flowchart LR
     V --> U[Answer + Sources + Debug Panel]
 ```
 
-## 功能一览
+## Features
 
-| 模块 | 功能 |
-|------|------|
-| 文档管理 | 上传(PDF/TXT/MD)、笔记创建、标签、AI摘要、知识库分组 |
-| 智能问答 | RAG问答、多轮对话、查询重写、多跳检索、引用溯源、历史搜索 |
-| 学习测验 | LLM出题、在线答题、错题记录、掌握度追踪、Anki导出 |
-| 学习看板 | 统计概览、正确率分析、薄弱点识别、学习趋势 |
-| 知识图谱 | 概念提取、关系分析、D3.js可视化、相关概念推荐 |
-| Multi-Agent | Supervisor意图分类、Tutor/Examiner/Summarizer专业Agent |
-| 工程化 | 一键备份/恢复、Markdown导出、Debug Panel |
+| Area | Capabilities |
+|---|---|
+| Document management | PDF/TXT/MD upload, note creation, tags, AI summaries, knowledge-base collections |
+| RAG chat | cited answers, multi-turn query rewriting, multi-hop retrieval, source previews, chat history search |
+| Retrieval quality | vector + FTS5 hybrid search, RRF ranking, hard-negative evaluation, confidence gating |
+| Citation safety | explicit citation extraction, sentence-level citation completeness checks, safe refusal fallback |
+| Quiz workflow | LLM-generated quizzes, online answering, mistake records, spaced review, Anki export |
+| Dashboard | document stats, quiz stats, weak-point tracking, recent activity |
+| Knowledge graph | concept extraction, relationship mining, D3 force-directed visualization |
+| Multi-agent mode | supervisor routing to Tutor, Examiner, and Summarizer agents |
+| Engineering tools | backup/restore, Markdown export, Debug Panel, offline evaluation scripts |
 
-## 快速开始
+## Tech Stack
 
-### 环境要求
+**Backend**
+
+- FastAPI + Python 3.12
+- SQLite with WAL mode
+- ChromaDB vector store
+- OpenAI-compatible LLM and embedding APIs
+- PyMuPDF for PDF parsing and image extraction
+- Ruff, mypy, pytest
+
+**Frontend**
+
+- React 18 + TypeScript
+- Vite
+- TailwindCSS
+- D3.js
+- Vitest
+
+## Quick Start
+
+### Requirements
 
 - Python 3.12+
 - Node.js 18+
-- OpenAI API Key（或使用本地 Ollama）
+- OpenAI API key, or an OpenAI-compatible local provider such as Ollama
 
-### 1. 后端
+### 1. Start The Backend
 
 ```bash
 cd backend
 
-# 创建虚拟环境
 python3.12 -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+source venv/bin/activate
 
-# 安装依赖
 pip install -r requirements.txt
 
-# 配置环境变量
 cp .env.example .env
-# 编辑 .env，填入你的 OPENAI_API_KEY
+# Edit .env and set OPENAI_API_KEY or configure a local Ollama provider.
 
-# 启动后端
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-后端启动后访问 http://localhost:8000/docs 查看 API 文档。
+API docs are available at:
 
-### 2. 前端
+```text
+http://localhost:8000/docs
+```
+
+### 2. Start The Frontend
 
 ```bash
 cd frontend
 
-# 安装依赖
 npm install
-
-# 启动前端开发服务器
 npm run dev
 ```
 
-前端启动后访问 http://localhost:5173
+Open:
 
-### 使用本地模型（可选）
+```text
+http://localhost:5173
+```
 
-本地 embedding 和 reranker 需要额外安装 PyTorch / sentence-transformers：
+## Local Models
+
+Local embeddings and reranking require the optional local dependencies:
 
 ```bash
 cd backend
 pip install -r requirements-local.txt
+```
 
-# 修改 .env
+Example local embedding configuration:
+
+```env
 ASA_EMBEDDING_PROVIDER=local
 ASA_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
 ASA_EMBEDDING_DIMENSION=512
 ```
 
-如果不想使用云端 LLM API，可以用 Ollama 本地部署：
+Example Ollama configuration:
 
 ```bash
-# 安装 Ollama: https://ollama.com
-# 拉取模型
 ollama pull qwen2.5:7b
+```
 
-# 修改 .env
+```env
 ASA_LLM_PROVIDER=ollama
 ASA_LLM_MODEL=qwen2.5:7b
 ASA_OLLAMA_BASE_URL=http://localhost:11434/v1
 ```
 
-## 项目结构
+## Project Structure
 
-```
-├── backend/                        Python FastAPI 后端
+```text
+.
+├── backend/
 │   ├── app/
-│   │   ├── main.py                 FastAPI 入口 + lifespan
-│   │   ├── config.py               pydantic-settings 配置
-│   │   ├── db/database.py          SQLite 初始化 + 21 张表
-│   │   ├── models/schemas.py       Pydantic 模型
-│   │   ├── services/
-│   │   │   ├── parser.py           文档解析（PDF/TXT/MD）
-│   │   │   ├── chunker.py          文本分块（段落感知 + overlap）
-│   │   │   ├── embedder.py         Embedding 生成
-│   │   │   ├── vectorstore.py      ChromaDB 向量存储
-│   │   │   ├── retriever.py        Vector + FTS5 + RRF 混合检索
-│   │   │   ├── generator.py        LLM 生成 + SSE streaming
-│   │   │   ├── rag.py              RAG 流程编排（7步ingest）
-│   │   │   ├── quality.py          Chunk 质量评分
-│   │   │   ├── image_extractor.py  PDF 图片提取
-│   │   │   ├── knowledge_graph.py  知识图谱构建
-│   │   │   └── agents/             Multi-Agent 系统
-│   │   │       ├── supervisor.py   Supervisor 意图路由
-│   │   │       ├── tutor.py        深入解释 Agent
-│   │   │       ├── examiner.py     测验生成 Agent
-│   │   │       └── summarizer.py   文档摘要 Agent
-│   │   └── routers/
-│   │       ├── documents.py        文档管理 API
-│   │       ├── chat.py             问答 API（SSE + FTS5搜索）
-│   │       ├── collections.py      知识库分组 API
-│   │       ├── backup.py           备份/恢复/MD导出 API
-│   │       ├── quiz.py             测验/错题/Anki/看板 API
-│   │       ├── knowledge_graph.py  知识图谱 API
-│   │       └── multi_agent.py      Multi-Agent API
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── db/
+│   │   ├── evaluation/
+│   │   │   ├── answer_quality.py
+│   │   │   └── retrieval.py
+│   │   ├── models/
+│   │   ├── routers/
+│   │   └── services/
+│   │       ├── chunker.py
+│   │       ├── citation_validator.py
+│   │       ├── embedder.py
+│   │       ├── generator.py
+│   │       ├── query_planner.py
+│   │       ├── rag.py
+│   │       ├── retriever.py
+│   │       ├── vectorstore.py
+│   │       └── agents/
+│   ├── eval/
 │   ├── requirements.txt
-│   └── .env.example
-│
-├── frontend/                       React + Vite + TypeScript 前端
+│   └── requirements-dev.txt
+├── frontend/
 │   ├── src/
-│   │   ├── App.tsx                 路由 + 暗色侧边栏布局
+│   │   ├── api/
+│   │   ├── components/
 │   │   ├── pages/
-│   │   │   ├── Documents.tsx       文档管理（拖拽上传 + 彩色标签）
-│   │   │   ├── Chat.tsx            智能问答（SSE + 智能模式开关）
-│   │   │   ├── Quiz.tsx            学习测验（卡片选项 + 进度条）
-│   │   │   ├── Dashboard.tsx       学习看板（渐变卡片 + 图表）
-│   │   │   └── KnowledgeGraph.tsx  知识图谱（D3.js 力导向图）
-│   │   └── api/index.ts            API 客户端（41个接口）
+│   │   └── test/
 │   └── package.json
-│
 └── docs/
-    ├── PRD.md                      产品需求文档（v3，全部 Phase ✅）
-    ├── TECHNICAL_DESIGN.md         技术设计文档
-    └── PROJECT_SUMMARY.md          项目完成总结
+    ├── EVALUATION.md
+    ├── PRD.md
+    └── TECHNICAL_DESIGN.md
 ```
 
-## 技术栈
+## Data Storage
 
-**后端**：FastAPI + Python 3.12 + SQLite (WAL) + ChromaDB + OpenAI API + PyMuPDF  
-**前端**：React 18 + TypeScript + Vite + TailwindCSS + D3.js
+All local application data is stored under:
 
-## 数据存储
-
-所有数据保存在 `~/.ai-study-assistant/` 目录：
-
-```
+```text
 ~/.ai-study-assistant/
 ├── data/
-│   ├── documents/     # 原始文件
-│   ├── chroma_db/     # 向量索引 (HNSW)
-│   ├── chunk_images/  # PDF 提取的图片
-│   └── app.db         # SQLite 数据库 (21 张表)
+│   ├── documents/
+│   ├── chroma_db/
+│   ├── chunk_images/
+│   └── app.db
 ```
 
-## 开发阶段
+## Evaluation
 
-| Phase | 内容 | 状态 |
-|-------|------|------|
-| 1 | MVP：文档上传 + RAG 问答 + 引用溯源 + Debug Panel | ✅ |
-| 2 | 多轮对话 + query rewrite + 笔记总结 + 标签分类 | ✅ |
-| 2.5 | 知识库分组 + 备份恢复 + Markdown 导出 | ✅ |
-| 3 | 测验生成 + 错题本 + Anki 导出 + 学习看板 | ✅ |
-| 4 | 混合检索 + FTS5 历史搜索 + Chunk 质量评分 + PDF 图片提取 | ✅ |
-| 5 | 知识图谱（NER + 共现分析 + D3.js 可视化） | ✅ |
-| 6 | Multi-Agent（Supervisor + Tutor/Examiner/Summarizer） | ✅ |
+The repository includes deterministic offline evaluation scripts for retrieval and answer quality. These evaluations can run against an isolated versioned corpus so local user documents do not affect the score.
 
-详细需求见 [docs/PRD.md](docs/PRD.md)。
-
-## API 端点
-
-后端共提供 30+ 个 REST API 端点：
-
-- **文档管理**：上传、列表、删除、标签、摘要、图片
-- **知识库**：创建、列表、删除、文档分配
-- **问答**：SSE 聊天、会话管理、历史搜索
-- **测验**：生成、提交、错题、复习、Anki 导出、看板
-- **知识图谱**：构建、查询、相关概念
-- **Multi-Agent**：智能路由对话
-- **备份**：导出、导入、Markdown 导出
-
-## 开发工具
-
-### 后端
+### Retrieval Quality Gate
 
 ```bash
 cd backend
-source venv/bin/activate
 
-# Lint 检查
-ruff check app/
-
-# 格式化
-ruff format app/
-
-# 类型检查
-mypy app/
-
-# 运行测试
-pytest tests/ -v
-```
-
-### 检索质量评测
-
-复制示例 JSONL，并把相关文档名、文档 ID 或 chunk ID 替换为真实标注：
-
-```bash
-cd backend
-cp eval/retrieval.example.jsonl eval/retrieval.jsonl
-
-# 同时比较纯向量检索和混合检索
 python -m app.evaluation.retrieval \
   --dataset eval/retrieval.golden.jsonl \
   --corpus eval/corpora/machine_learning_basics.jsonl \
@@ -275,11 +232,11 @@ python -m app.evaluation.retrieval \
   --max-p95-latency-ms 100
 ```
 
-命令输出 `Hit@K`、`MRR`、`Recall@K`、`HardNeg@K`、无答案拒答准确率和检索延迟。评测只运行召回层，不调用回答生成模型。传入 `--corpus` 时会构建临时 SQLite/Chroma 评测库，避免本机真实知识库影响分数。完整报告可能包含本地文档名，建议输出到临时目录；摘要报告不含逐条召回结果，可以提交到仓库。
-
-多跳/复合问题使用单独的 Recall gate：
+### Multi-Hop Retrieval Gate
 
 ```bash
+cd backend
+
 python -m app.evaluation.retrieval \
   --dataset eval/retrieval_multihop.golden.jsonl \
   --corpus eval/corpora/machine_learning_basics.jsonl \
@@ -292,31 +249,63 @@ python -m app.evaluation.retrieval \
   --max-p95-latency-ms 150
 ```
 
-当前黄金集、基线结果和质量门槛见 [docs/EVALUATION.md](docs/EVALUATION.md)。
+### Answer And Citation Quality Gate
 
-### 前端
+```bash
+cd backend
+
+python -m app.evaluation.answer_quality \
+  --dataset eval/answer_quality.example.jsonl \
+  --min-refusal-accuracy 1.0 \
+  --min-citation-validity 1.0 \
+  --min-citation-completeness 1.0 \
+  --min-evidence-coverage 1.0
+```
+
+More details are documented in [docs/EVALUATION.md](docs/EVALUATION.md).
+
+## Development
+
+### Backend
+
+```bash
+cd backend
+source venv/bin/activate
+
+ruff check app tests
+ruff format --check app tests
+mypy app
+pytest tests -v
+```
+
+### Frontend
 
 ```bash
 cd frontend
 
-# ESLint 检查
 npm run lint
-
-# Prettier 格式化
-npm run format
-
-# 运行测试
+npm run build
 npm run test
 ```
 
-### CI/CD
+## API Surface
 
-项目使用 GitHub Actions 进行持续集成，每次 push 到 main 或 PR 时自动运行：
+The backend provides REST and SSE endpoints for:
 
-- **后端**：ruff lint → ruff format → mypy → pytest
-- **前端**：ESLint → Prettier → Vitest → Production Build
+- Document upload, listing, deletion, tags, summaries, and extracted images
+- Knowledge-base collections
+- RAG chat, sessions, citations, and chat history search
+- Quiz generation, quiz submission, mistake review, Anki export, and dashboard stats
+- Knowledge graph construction and querying
+- Multi-agent routing
+- Backup, restore, and Markdown export
 
-详见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+## Roadmap
+
+- Expand the multi-hop evaluation corpus with more distractor documents.
+- Add semantic faithfulness judging for saved model outputs.
+- Add stronger parent/child chunk retrieval for long technical documents.
+- Package a one-command local deployment profile.
 
 ## License
 
