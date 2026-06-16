@@ -2,6 +2,7 @@
 
 import os
 
+import app.config as config_module
 from app.config import Settings
 
 
@@ -29,6 +30,7 @@ def test_settings_defaults(monkeypatch):
     assert s.reranker_top_n == 12
     assert s.embedding_provider == "openai"
     assert s.llm_provider == "openai"
+    assert s.llm_base_url == ""
     assert s.max_upload_size_mb == 50
     assert ".pdf" in s.supported_extensions
 
@@ -63,8 +65,26 @@ def test_openai_api_key_from_env(monkeypatch):
     assert s.openai_api_key == "sk-test-123"
 
 
-def test_openai_api_key_empty_when_not_set(monkeypatch):
+def test_openai_api_key_empty_when_not_set(tmp_path, monkeypatch):
     """openai_api_key should return empty string when not set."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(config_module, "ENV_FILE", tmp_path / "missing.env")
     s = Settings()
     assert s.openai_api_key == ""
+
+
+def test_openai_api_key_reads_project_env_file(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=sk-from-file\n", encoding="utf-8")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(config_module, "ENV_FILE", env_file)
+
+    s = Settings()
+
+    assert s.openai_api_key == "sk-from-file"
+
+
+def test_generic_llm_api_key_from_env(monkeypatch):
+    monkeypatch.setenv("ASA_LLM_API_KEY", "provider-key")
+    s = Settings()
+    assert s.llm_api_key == "provider-key"

@@ -32,6 +32,7 @@ from app.routers import (
 )
 from app.services.embedder import create_embedder
 from app.services.generator import Generator
+from app.services.model_catalog import resolve_llm_client_config
 from app.services.rag import RAGPipeline
 from app.services.vectorstore import VectorStore
 
@@ -81,15 +82,12 @@ async def lifespan(app: FastAPI):
     logger.info("Vector store ready (%d vectors)", vector_store.count())
 
     # Initialize generator
+    llm_config = resolve_llm_client_config(settings)
     generator = Generator(
-        provider=settings.llm_provider,
-        model=settings.llm_model,
-        api_key=settings.openai_api_key,
-        base_url=settings.ollama_base_url
-        if settings.llm_provider == "ollama"
-        else settings.openai_base_url
-        if settings.openai_base_url
-        else None,
+        provider=llm_config["provider"] or "openai",
+        model=llm_config["model"] or settings.llm_model,
+        api_key=llm_config["api_key"] or "",
+        base_url=llm_config["base_url"],
     )
     logger.info(
         "LLM generator ready (provider=%s, model=%s)", settings.llm_provider, settings.llm_model

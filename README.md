@@ -86,7 +86,7 @@ flowchart LR
 
 - Python 3.12+
 - Node.js 18+
-- OpenAI API key, or an OpenAI-compatible local provider such as Ollama
+- API key for one supported provider, or an OpenAI-compatible local provider such as Ollama
 
 ### 1. Start The Backend
 
@@ -99,7 +99,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY or configure a local Ollama provider.
+# Edit .env and set OPENAI_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY,
+# DASHSCOPE_API_KEY, MOONSHOT_API_KEY, MISTRAL_API_KEY, XAI_API_KEY,
+# OPENROUTER_API_KEY, or configure a local Ollama provider.
 
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -153,6 +155,24 @@ ASA_LLM_PROVIDER=ollama
 ASA_LLM_MODEL=qwen2.5:7b
 ASA_OLLAMA_BASE_URL=http://localhost:11434/v1
 ```
+
+## Supported LLM Providers
+
+The backend uses OpenAI-compatible chat completions wherever possible. You can switch providers from the Settings page or by editing `.env`.
+
+| Provider | Example models | Key env |
+|---|---|---|
+| OpenAI | `gpt-5.5`, `gpt-5.4`, `gpt-4.1`, `gpt-4o-mini` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini-2.5-pro`, `gemini-2.5-flash` | `GEMINI_API_KEY` |
+| DeepSeek | `deepseek-v4-flash`, `deepseek-chat`, `deepseek-reasoner` | `DEEPSEEK_API_KEY` |
+| Alibaba Qwen / DashScope | `qwen-max`, `qwen-plus`, `qwen-turbo` | `DASHSCOPE_API_KEY` |
+| Moonshot Kimi | `moonshot-v1-128k`, `moonshot-v1-32k` | `MOONSHOT_API_KEY` |
+| Mistral AI | `mistral-large-latest`, `mistral-small-latest`, `codestral-latest` | `MISTRAL_API_KEY` |
+| Zhipu / Z.ai GLM | `glm-4.5`, `glm-4.5-air`, `glm-4-plus` | `ZHIPU_API_KEY` |
+| xAI Grok | `grok-4.3`, `grok-build-0.1`, `grok-4` | `XAI_API_KEY` |
+| OpenRouter | Claude, Gemini, Grok, Llama, Mistral and more | `OPENROUTER_API_KEY` |
+| Ollama | `qwen2.5:7b`, `llama3.1:8b`, `deepseek-r1:7b` | local |
+| Custom OpenAI-compatible | any compatible model ID | `ASA_LLM_API_KEY` |
 
 ## Project Structure
 

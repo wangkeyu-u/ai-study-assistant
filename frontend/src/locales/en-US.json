@@ -208,16 +208,25 @@
     "notConfigured": "Not Configured",
     "llmModel": "LLM Model",
     "embeddingModel": "Embedding Model",
+    "providerLabel": "Model Provider",
+    "modelLabel": "Chat Model",
+    "baseUrlLabel": "Base URL",
+    "customModel": "Custom model ID",
+    "customModelLabel": "Custom Model ID",
+    "providerDocs": "Provider docs",
+    "providerKeyLabel": "API Key ({env})",
+    "saveModel": "Save provider and model",
     "apiKeyLabel": "OpenAI API Key",
     "securityNote": "Key is saved to project root .env file, stored locally only. Never uploaded to any server.",
     "guide": "Guide",
-    "guide1": "Get API Key from <a>OpenAI Platform</a>",
-    "guide2": "Paste the Key above and click Save",
-    "guide3": "After saving, all features including document upload, Q&A, and quiz generation will be available",
+    "guide1": "Choose a provider such as OpenAI, Gemini, DeepSeek, Qwen, Kimi, Mistral, xAI, OpenRouter, or Ollama",
+    "guide2": "Paste the provider API key and click Save provider and model",
+    "guide3": "OpenRouter can be used as a unified gateway for Claude, Grok, Gemini, Llama, Mistral, and many other models",
     "error_connect": "Cannot connect to backend",
     "error_getStatus": "Failed to get API Key status",
     "error_update": "Failed to update API Key",
-    "pleaseEnterKey": "Please enter API Key"
+    "pleaseEnterKey": "Please enter API Key",
+    "pleaseEnterModel": "Please enter a model ID"
   },
 
   "api": {
@@ -242,6 +251,7 @@
     "getRelatedFailed": "Failed to get related concepts",
     "multiAgentFailed": "Multi-Agent request failed",
     "getApiKeyStatusFailed": "Failed to get API Key status",
-    "updateApiKeyFailed": "Failed to update API Key"
+    "updateApiKeyFailed": "Failed to update API Key",
+    "updateModelFailed": "Failed to update model settings"
   }
 }

@@ -208,16 +208,25 @@
     "notConfigured": "未配置",
     "llmModel": "LLM 模型",
     "embeddingModel": "Embedding 模型",
+    "providerLabel": "模型供应商",
+    "modelLabel": "对话模型",
+    "baseUrlLabel": "Base URL",
+    "customModel": "自定义模型 ID",
+    "customModelLabel": "自定义模型 ID",
+    "providerDocs": "供应商文档",
+    "providerKeyLabel": "API Key（{env}）",
+    "saveModel": "保存供应商和模型",
     "apiKeyLabel": "OpenAI API Key",
     "securityNote": "Key 会写入项目根目录的 .env 文件，仅保存在本地，不会上传到任何服务器。",
     "guide": "使用指南",
-    "guide1": "在 <a>OpenAI 平台</a> 获取 API Key",
-    "guide2": "将 Key 粘贴到上方输入框并点击保存",
-    "guide3": "保存后即可使用文档上传、智能问答、测验生成等全部功能",
+    "guide1": "选择 OpenAI、Gemini、DeepSeek、Qwen、Kimi、Mistral、xAI、OpenRouter 或 Ollama 等供应商",
+    "guide2": "粘贴对应供应商的 API Key，然后点击保存供应商和模型",
+    "guide3": "OpenRouter 可作为统一入口调用 Claude、Grok、Gemini、Llama、Mistral 等更多模型",
     "error_connect": "无法连接后端服务",
     "error_getStatus": "获取 API Key 状态失败",
     "error_update": "更新 API Key 失败",
-    "pleaseEnterKey": "请输入 API Key"
+    "pleaseEnterKey": "请输入 API Key",
+    "pleaseEnterModel": "请输入模型 ID"
   },
 
   "api": {
@@ -242,6 +251,7 @@
     "getRelatedFailed": "获取相关概念失败",
     "multiAgentFailed": "Multi-Agent 请求失败",
     "getApiKeyStatusFailed": "获取 API Key 状态失败",
-    "updateApiKeyFailed": "更新 API Key 失败"
+    "updateApiKeyFailed": "更新 API Key 失败",
+    "updateModelFailed": "更新模型设置失败"
   }
 }

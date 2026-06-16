@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
-import { getApiKeyStatus, updateApiKey, ApiKeyStatus } from '../api';
+import {
+  ApiKeyStatus,
+  ModelCatalogResponse,
+  getApiKeyStatus,
+  getModelCatalog,
+  updateApiKey,
+  updateModelSelection,
+} from '../api';
 
 export default function Settings() {
   const { t } = useTranslation();
@@ -11,11 +18,20 @@ export default function Settings() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('error');
   const [showKey, setShowKey] = useState(false);
+  const [modelCatalog, setModelCatalog] = useState<ModelCatalogResponse | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState('openai');
+  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
+  const [customModel, setCustomModel] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
 
   const loadStatus = useCallback(async () => {
     try {
-      const s = await getApiKeyStatus();
+      const [s, catalog] = await Promise.all([getApiKeyStatus(), getModelCatalog()]);
       setStatus(s);
+      setModelCatalog(catalog);
+      setSelectedProvider(catalog.current.llm_provider || s.llm_provider);
+      setSelectedModel(catalog.current.llm_model || s.llm_model);
+      setBaseUrl(catalog.current.llm_base_url || '');
     } catch {
       setMessage(t('settings.error_connect'));
       setMessageType('error');
@@ -38,6 +54,47 @@ export default function Settings() {
     setMessage('');
     try {
       const result = await updateApiKey(apiKey.trim());
+      setMessage(result.message);
+      setMessageType(result.success ? 'success' : 'error');
+      if (result.success) {
+        setApiKey('');
+        await loadStatus();
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : t('settings.error_update'));
+      setMessageType('error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const currentProvider = modelCatalog?.providers.find((provider) => provider.id === selectedProvider);
+  const currentModels = currentProvider?.models || [];
+  const resolvedModel = selectedModel === '__custom__' ? customModel.trim() : selectedModel;
+
+  const handleProviderChange = (providerId: string) => {
+    const provider = modelCatalog?.providers.find((item) => item.id === providerId);
+    setSelectedProvider(providerId);
+    setSelectedModel(provider?.models[0]?.id || '__custom__');
+    setCustomModel('');
+    setBaseUrl(provider?.base_url || '');
+  };
+
+  const handleSaveModel = async () => {
+    if (!resolvedModel) {
+      setMessage(t('settings.pleaseEnterModel'));
+      setMessageType('error');
+      return;
+    }
+    setSaving(true);
+    setMessage('');
+    try {
+      const result = await updateModelSelection({
+        llm_provider: selectedProvider,
+        llm_model: resolvedModel,
+        llm_base_url: baseUrl || null,
+        api_key: apiKey.trim() || null,
+      });
       setMessage(result.message);
       setMessageType(result.success ? 'success' : 'error');
       if (result.success) {
@@ -110,10 +167,88 @@ export default function Settings() {
               </div>
             )}
 
+            {/* Model selection */}
+            {modelCatalog && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('settings.providerLabel')}
+                  </label>
+                  <select
+                    value={selectedProvider}
+                    onChange={(event) => handleProviderChange(event.target.value)}
+                    className="spell-input w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  >
+                    {modelCatalog.providers.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
+                  {currentProvider?.docs_url && (
+                    <a
+                      href={currentProvider.docs_url}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-xs text-blue-600 hover:underline mt-1 inline-block"
+                    >
+                      {t('settings.providerDocs')}
+                    </a>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('settings.modelLabel')}
+                  </label>
+                  <select
+                    value={selectedModel}
+                    onChange={(event) => setSelectedModel(event.target.value)}
+                    className="spell-input w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  >
+                    {currentModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.label} ({model.id})
+                      </option>
+                    ))}
+                    <option value="__custom__">{t('settings.customModel')}</option>
+                  </select>
+                </div>
+
+                {selectedModel === '__custom__' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {t('settings.customModelLabel')}
+                    </label>
+                    <input
+                      value={customModel}
+                      onChange={(event) => setCustomModel(event.target.value)}
+                      placeholder="provider-model-id"
+                      className="spell-input w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('settings.baseUrlLabel')}
+                  </label>
+                  <input
+                    value={baseUrl}
+                    onChange={(event) => setBaseUrl(event.target.value)}
+                    placeholder={currentProvider?.base_url || 'https://api.example.com/v1'}
+                    className="spell-input w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* 输入框 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('settings.apiKeyLabel')}
+                {currentProvider
+                  ? t('settings.providerKeyLabel', { env: currentProvider.api_key_env })
+                  : t('settings.apiKeyLabel')}
               </label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -143,6 +278,14 @@ export default function Settings() {
               </div>
               <p className="text-xs text-gray-400 mt-2">{t('settings.securityNote')}</p>
             </div>
+
+            <button
+              onClick={handleSaveModel}
+              disabled={saving || !modelCatalog}
+              className="spell-button w-full px-6 py-2.5 bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-lg hover:from-slate-900 hover:to-slate-800 disabled:bg-gray-400 text-sm font-medium transition-colors"
+            >
+              {saving ? t('common.saving') : t('settings.saveModel')}
+            </button>
 
             {/* 提示信息 */}
             {message && (

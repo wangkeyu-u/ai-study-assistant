@@ -643,8 +643,34 @@ export interface ApiKeyStatus {
   key_preview: string;
   llm_provider: string;
   llm_model: string;
+  llm_base_url?: string | null;
   embedding_provider: string;
   embedding_model: string;
+}
+
+export interface ModelPreset {
+  id: string;
+  label: string;
+  notes?: string;
+}
+
+export interface ModelProviderPreset {
+  id: string;
+  label: string;
+  base_url?: string | null;
+  api_key_env: string;
+  docs_url?: string;
+  openai_compatible: boolean;
+  models: ModelPreset[];
+}
+
+export interface ModelCatalogResponse {
+  providers: ModelProviderPreset[];
+  current: {
+    llm_provider: string;
+    llm_model: string;
+    llm_base_url?: string | null;
+  };
 }
 
 export interface ApiKeyUpdateResponse {
@@ -658,6 +684,10 @@ export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
   return res.json();
 }
 
+export async function getModelCatalog(): Promise<ModelCatalogResponse> {
+  return fetchJson<ModelCatalogResponse>(`${BASE_URL}/settings/models`);
+}
+
 export async function updateApiKey(apiKey: string): Promise<ApiKeyUpdateResponse> {
   const res = await fetch(`${BASE_URL}/settings/api-key`, {
     method: 'POST',
@@ -665,5 +695,20 @@ export async function updateApiKey(apiKey: string): Promise<ApiKeyUpdateResponse
     body: JSON.stringify({ api_key: apiKey }),
   });
   if (!res.ok) throw new Error(getApiErrorMessage('api.updateApiKeyFailed'));
+  return res.json();
+}
+
+export async function updateModelSelection(payload: {
+  llm_provider: string;
+  llm_model: string;
+  llm_base_url?: string | null;
+  api_key?: string | null;
+}): Promise<ApiKeyUpdateResponse> {
+  const res = await fetch(`${BASE_URL}/settings/model`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(getApiErrorMessage('api.updateModelFailed'));
   return res.json();
 }

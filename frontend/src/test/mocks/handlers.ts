@@ -58,6 +58,31 @@ export const handlers = [
     return HttpResponse.json({
       has_key: true,
       key_preview: 'sk-****test',
+      llm_provider: 'openai',
+      llm_model: 'gpt-4o-mini',
+      embedding_provider: 'openai',
+      embedding_model: 'text-embedding-3-small',
+    });
+  }),
+
+  http.get('/api/settings/models', () => {
+    return HttpResponse.json({
+      providers: [
+        {
+          id: 'openai',
+          label: 'OpenAI',
+          base_url: null,
+          api_key_env: 'OPENAI_API_KEY',
+          docs_url: 'https://platform.openai.com/docs/models',
+          openai_compatible: true,
+          models: [{ id: 'gpt-4o-mini', label: 'GPT-4o mini', notes: 'test' }],
+        },
+      ],
+      current: {
+        llm_provider: 'openai',
+        llm_model: 'gpt-4o-mini',
+        llm_base_url: null,
+      },
     });
   }),
 ];

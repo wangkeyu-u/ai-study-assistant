@@ -1,8 +1,24 @@
 """Application configuration with pydantic-settings."""
 
 import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
+
+def _read_env_file_key(key: str) -> str:
+    if not ENV_FILE.exists():
+        return ""
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, value = stripped.split("=", 1)
+        if name.strip() == key:
+            return value.strip()
+    return ""
 
 
 class Settings(BaseSettings):
@@ -18,8 +34,9 @@ class Settings(BaseSettings):
     embedding_dimension: int = 1536
 
     # ── LLM ────────────────────────────────────────────────
-    llm_provider: str = "openai"  # "openai" | "ollama"
+    llm_provider: str = "openai"  # "openai" | "gemini" | "deepseek" | "qwen" | ...
     llm_model: str = "gpt-4o-mini"
+    llm_base_url: str = ""  # optional override for OpenAI-compatible providers
     ollama_base_url: str = "http://localhost:11434/v1"
     openai_base_url: str = ""  # custom base URL (e.g. DeepSeek)
 
@@ -52,7 +69,12 @@ class Settings(BaseSettings):
     @property
     def openai_api_key(self) -> str:
         """Read OPENAI_API_KEY directly from environment (no ASA_ prefix)."""
-        return os.getenv("OPENAI_API_KEY", "")
+        return os.getenv("OPENAI_API_KEY", "") or _read_env_file_key("OPENAI_API_KEY")
+
+    @property
+    def llm_api_key(self) -> str:
+        """Read a provider-agnostic LLM key for OpenAI-compatible providers."""
+        return os.getenv("ASA_LLM_API_KEY", "") or _read_env_file_key("ASA_LLM_API_KEY")
 
     def model_post_init(self, __context):
         os.makedirs(self.app_data_dir, exist_ok=True)

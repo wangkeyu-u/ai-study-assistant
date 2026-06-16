@@ -15,6 +15,7 @@ from openai import AsyncOpenAI
 
 from app.config import get_settings
 from app.db.database import get_db
+from app.services.model_catalog import resolve_llm_client_config
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,11 @@ async def extract_concepts_from_chunks(
         }
     """
     settings = get_settings()
-    client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url or None)
+    llm_config = resolve_llm_client_config(settings)
+    client = AsyncOpenAI(
+        api_key=llm_config["api_key"] or "",
+        base_url=llm_config["base_url"] or None,
+    )
 
     # Filter valid chunks first
     valid_chunks = [c for c in chunks if c.get("text") and len(c["text"].strip()) >= 50]
