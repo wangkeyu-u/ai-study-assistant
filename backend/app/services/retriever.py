@@ -18,6 +18,34 @@ logger = logging.getLogger(__name__)
 _ENGLISH_TERM_RE = re.compile(r"[A-Za-z0-9_]{3,}")
 _SHORT_ENGLISH_TERM_RE = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z0-9_]{2}(?![A-Za-z0-9_])")
 _CJK_RUN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]{3,}")
+_CJK_QUERY_MARKERS = (
+    "什么",
+    "哪些",
+    "哪个",
+    "哪类",
+    "如何",
+    "是否",
+    "怎样",
+    "多少",
+    "请问",
+)
+_CJK_GENERIC_BOOST_TERMS = {
+    "使用",
+    "通过",
+    "主要",
+    "文档",
+    "资料",
+    "教材",
+    "解释",
+    "说明",
+    "对应",
+}
+_META_NEGATION_RE = re.compile(
+    r"(不解释|不说明|不定义|不讨论|不会说明|只(?:是|列出|讨论|说明).{0,24}不|"
+    r"does\s+not\s+(?:explain|define|discuss)|"
+    r"do\s+not\s+(?:explain|define|discuss))",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -86,6 +114,37 @@ def extract_short_terms(query: str, max_terms: int = 8) -> list[str]:
         normalized = term.lower()
         if normalized not in terms:
             terms.append(normalized)
+    return terms[:max_terms]
+
+
+def extract_query_boost_terms(query: str, max_terms: int = 24) -> list[str]:
+    """Extract distinctive query fragments used as a small ranking tie-breaker."""
+    terms: list[str] = []
+
+    def add(term: str) -> None:
+        normalized = term.lower()
+        if normalized and normalized not in terms:
+            terms.append(normalized)
+
+    for term in _ENGLISH_TERM_RE.findall(query):
+        add(term)
+    for term in extract_short_terms(query):
+        add(term)
+
+    for run in _CJK_RUN_RE.findall(query):
+        for width in (4, 3):
+            if len(run) < width:
+                continue
+            for index in range(len(run) - width + 1):
+                term = run[index : index + width]
+                if term in _CJK_GENERIC_BOOST_TERMS:
+                    continue
+                if any(marker in term for marker in _CJK_QUERY_MARKERS):
+                    continue
+                add(term)
+                if len(terms) >= max_terms:
+                    return terms
+
     return terms[:max_terms]
 
 
@@ -180,6 +239,8 @@ class Retriever:
             mode = "vector"
 
         self._apply_quality_penalty(chunks)
+        self._apply_query_coverage_boost(query, chunks)
+        self._apply_answerability_penalty(chunks)
         chunks.sort(key=lambda chunk: chunk.score, reverse=True)
         if self.reranker and chunks:
             chunks = self.reranker.rerank(query, chunks[: self.rerank_top_n])
@@ -357,3 +418,25 @@ class Retriever:
                     chunk.score *= 0.8
         except Exception as error:
             logger.debug("Quality scoring skipped (non-critical): %s", error)
+
+    @staticmethod
+    def _apply_query_coverage_boost(query: str, chunks: list[RetrievedChunk]) -> None:
+        """Nudge chunks that preserve more distinctive words from the user query."""
+        terms = extract_query_boost_terms(query)
+        if not terms:
+            return
+
+        for chunk in chunks:
+            haystack = f"{chunk.heading or ''}\n{chunk.text}".lower()
+            matched_count = sum(1 for term in terms if term in haystack)
+            if matched_count:
+                chunk.score *= min(1.0 + matched_count * 0.06, 1.24)
+
+    @staticmethod
+    def _apply_answerability_penalty(chunks: list[RetrievedChunk]) -> None:
+        """Deprioritize meta-text that says it does not answer the topic."""
+        for chunk in chunks:
+            if _META_NEGATION_RE.search(chunk.text):
+                chunk.score *= 0.55
+                if chunk.lexical_score is not None:
+                    chunk.lexical_score *= 0.55

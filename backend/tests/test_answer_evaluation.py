@@ -5,8 +5,8 @@ from app.evaluation.answer_quality import (
     aggregate_answer_metrics,
     answer_gate_failures,
     score_answer,
-    split_factual_sentences,
 )
+from app.services.citation_validator import split_factual_sentences, validate_citation_coverage
 
 
 def test_score_answer_checks_citations_evidence_and_refusal():
@@ -45,6 +45,16 @@ def test_score_answer_exposes_invalid_and_missing_citations():
     assert score["citation_completeness"] == 0.0
     assert score["invalid_citation_count"] == 1
     assert score["evidence_coverage"] == 0.0
+
+
+def test_citation_validator_reports_sentence_level_failures():
+    validation = validate_citation_coverage("第一条事实[1]。第二条事实没有引用。第三条越界[9]。", 2)
+
+    assert validation.valid is False
+    assert validation.factual_sentence_count == 3
+    assert validation.cited_sentence_count == 1
+    assert validation.invalid_citation_count == 1
+    assert validation.missing_citation_sentences == ["第二条事实没有引用。", "第三条越界[9]。"]
 
 
 def test_split_factual_sentences_ignores_headings_and_refusal():

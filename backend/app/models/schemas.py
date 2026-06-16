@@ -111,6 +111,7 @@ class TokenUsage(BaseModel):
 class DebugInfo(BaseModel):
     query: str
     rewritten_query: str | None = None
+    retrieval_queries: list[str] = []
     embedding_model: str
     retrieval_mode: str = "vector"
     confidence_rejected: bool = False

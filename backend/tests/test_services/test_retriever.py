@@ -6,8 +6,10 @@ import pytest
 
 from app.db.database import get_connection
 from app.services.retriever import (
+    RetrievedChunk,
     Retriever,
     build_fts_query,
+    extract_query_boost_terms,
     extract_short_terms,
     reciprocal_rank_fusion,
 )
@@ -56,6 +58,14 @@ def test_reciprocal_rank_fusion_rewards_results_found_by_both_sources():
 def test_extract_short_terms_supports_terms_trigram_fts_cannot_index():
     assert extract_short_terms("F1 和 AI 指标") == ["f1", "ai"]
     assert extract_short_terms("What is AI and ML used for?") == ["ai", "ml"]
+
+
+def test_extract_query_boost_terms_filters_question_noise():
+    terms = extract_query_boost_terms("监督学习使用什么样的训练数据？")
+
+    assert "监督学习" in terms
+    assert "训练数据" in terms
+    assert all("什么" not in term for term in terms)
 
 
 def test_hybrid_retrieval_recovers_exact_keyword_match(tmp_db):
@@ -231,6 +241,65 @@ def test_optional_reranker_controls_final_candidate_order(tmp_db):
 
     assert [chunk.chunk_id for chunk in result.chunks] == ["second", "first"]
     assert result.mode == "vector_rerank"
+
+
+def test_answerability_penalty_deprioritizes_meta_negative_chunks(tmp_db):
+    relevant = RetrievedChunk(
+        chunk_id="relevant",
+        text="F1分数是精确率和召回率的调和平均值。",
+        score=0.9,
+        doc_id="doc",
+        doc_name="source.pdf",
+        page_num=1,
+        chunk_index=0,
+        heading=None,
+    )
+    distractor = RetrievedChunk(
+        chunk_id="distractor",
+        text="本文只说明监控字段需要被采集和告警，不定义F1分数。",
+        score=1.0,
+        doc_id="doc",
+        doc_name="source.pdf",
+        page_num=1,
+        chunk_index=1,
+        heading=None,
+        lexical_score=1.0,
+    )
+
+    Retriever._apply_answerability_penalty([relevant, distractor])
+
+    assert distractor.score < relevant.score
+    assert distractor.lexical_score == 0.55
+
+
+def test_query_coverage_boost_rewards_more_query_fragments(tmp_db):
+    partial = RetrievedChunk(
+        chunk_id="partial",
+        text="训练数据上表现很好，但泛化到新数据较差。",
+        score=1.0,
+        doc_id="doc",
+        doc_name="source.pdf",
+        page_num=1,
+        chunk_index=0,
+        heading=None,
+    )
+    covered = RetrievedChunk(
+        chunk_id="covered",
+        text="监督学习通常使用带标签的训练数据。",
+        score=0.98,
+        doc_id="doc",
+        doc_name="source.pdf",
+        page_num=1,
+        chunk_index=1,
+        heading=None,
+    )
+
+    Retriever._apply_query_coverage_boost(
+        "监督学习使用什么样的训练数据？",
+        [partial, covered],
+    )
+
+    assert covered.score > partial.score
 
 
 def test_chunks_fts_is_rebuilt_for_existing_rows(tmp_path):

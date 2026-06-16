@@ -1,23 +1,59 @@
 # AI Study Assistant
 
+[![CI](https://github.com/wangkeyu-u/ai-study-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/wangkeyu-u/ai-study-assistant/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-RAG-009688)
+![React](https://img.shields.io/badge/React-TypeScript-61DAFB)
+![Local First](https://img.shields.io/badge/Local--First-Privacy-success)
+
 本地优先的 RAG 学习助手，把学习资料转化为可问答、可引用、可复习的个人知识库。
+
+AI Study Assistant is a local-first RAG learning platform that turns PDFs, notes, and Markdown files into a searchable, cited, quiz-ready personal knowledge base.
+
+## 项目亮点
+
+- **生产级 RAG 检索链路**：ChromaDB 向量召回 + SQLite FTS5 关键词召回 + RRF 融合排序 + confidence gate，兼顾语义召回、精确关键词和无答案拒答。
+- **多跳问题处理**：对复合问题进行 deterministic query decomposition，多子查询检索后再 RRF 融合，使用独立 `Recall@K` gate 评估多证据覆盖。
+- **引用安全机制**：生成后进行句级 citation validation，缺引用或引用越界时自动替换为安全拒答，避免无依据回答进入 UI 和历史记录。
+- **可量化质量评测**：内置 isolated retrieval eval、hard-negative eval、multi-hop eval、answer/citation quality eval，当前 hybrid 检索基线达到 `MRR=1.000 / Hit@1=1.000 / NoAnswer=1.000`。
+- **完整学习闭环**：资料上传、分块入库、问答溯源、测验生成、错题复习、Anki 导出、知识图谱和学习看板一体化。
+- **本地优先与可观测**：SQLite/Chroma 数据保存在本机，Debug Panel 展示 rewritten query、retrieval queries、召回 chunk、token 和延迟指标。
 
 ## 核心特性
 
 - **资料即知识库**：上传 PDF/Markdown/TXT，自动解析、分块、建立向量索引
 - **问答有据可依**：每个回答标注来源文档、页码、chunk 编号，点击查看原文
 - **混合检索**：ChromaDB 向量召回 + SQLite FTS5 关键词召回，通过 RRF 融合排序
+- **多跳检索**：复合问题自动拆成多个子查询，融合多路召回结果提升证据覆盖
 - **Multi-Agent 智能路由**：Supervisor 自动判断意图，分配给 Tutor/Examiner/Summarizer
 - **知识图谱可视化**：自动提取概念和关系，D3.js 交互式展示
 - **学习闭环**：上传 → 提问 → 测验 → 错题复习 → Anki 导出
 - **数据完全本地**：所有数据保存在本地，隐私可控
+
+## RAG 架构
+
+```mermaid
+flowchart LR
+    A[Upload PDF / TXT / MD] --> B[Parse and Chunk]
+    B --> C[Embedding]
+    C --> D[(ChromaDB Vector Store)]
+    B --> E[(SQLite Metadata + FTS5)]
+    Q[User Question] --> R[Rewrite / Query Decomposition]
+    R --> S[Hybrid Retrieval]
+    D --> S
+    E --> S
+    S --> T[RRF Fusion + Confidence Gate]
+    T --> G[LLM Generation]
+    G --> V[Sentence-level Citation Validation]
+    V --> U[Answer + Sources + Debug Panel]
+```
 
 ## 功能一览
 
 | 模块 | 功能 |
 |------|------|
 | 文档管理 | 上传(PDF/TXT/MD)、笔记创建、标签、AI摘要、知识库分组 |
-| 智能问答 | RAG问答、多轮对话、查询重写、引用溯源、历史搜索 |
+| 智能问答 | RAG问答、多轮对话、查询重写、多跳检索、引用溯源、历史搜索 |
 | 学习测验 | LLM出题、在线答题、错题记录、掌握度追踪、Anki导出 |
 | 学习看板 | 统计概览、正确率分析、薄弱点识别、学习趋势 |
 | 知识图谱 | 概念提取、关系分析、D3.js可视化、相关概念推荐 |
@@ -152,7 +188,7 @@ ASA_OLLAMA_BASE_URL=http://localhost:11434/v1
 ## 技术栈
 
 **后端**：FastAPI + Python 3.12 + SQLite (WAL) + ChromaDB + OpenAI API + PyMuPDF  
-**前端**：React 18 + TypeScript + Vite + TailwindCSS + D3.js + Recharts
+**前端**：React 18 + TypeScript + Vite + TailwindCSS + D3.js
 
 ## 数据存储
 
@@ -225,13 +261,36 @@ cp eval/retrieval.example.jsonl eval/retrieval.jsonl
 # 同时比较纯向量检索和混合检索
 python -m app.evaluation.retrieval \
   --dataset eval/retrieval.golden.jsonl \
+  --corpus eval/corpora/machine_learning_basics.jsonl \
   --modes vector hybrid \
   --k 1 3 5 \
   --output /tmp/retrieval-report.json \
-  --summary-output eval/retrieval.baseline.summary.json
+  --summary-output eval/retrieval.baseline.summary.json \
+  --gate-mode hybrid \
+  --min-mrr 0.98 \
+  --min-hit-at 1=0.97 \
+  --min-hit-at 3=1.00 \
+  --min-hard-negative-free-at 1=1.00 \
+  --min-no-answer-accuracy 1.00 \
+  --max-p95-latency-ms 100
 ```
 
-命令输出 `Hit@K`、`MRR`、`Recall@K`、无答案拒答准确率和检索延迟。评测只运行召回层，不调用回答生成模型。完整报告可能包含本地文档名，建议输出到临时目录；摘要报告不含逐条召回结果，可以提交到仓库。
+命令输出 `Hit@K`、`MRR`、`Recall@K`、`HardNeg@K`、无答案拒答准确率和检索延迟。评测只运行召回层，不调用回答生成模型。传入 `--corpus` 时会构建临时 SQLite/Chroma 评测库，避免本机真实知识库影响分数。完整报告可能包含本地文档名，建议输出到临时目录；摘要报告不含逐条召回结果，可以提交到仓库。
+
+多跳/复合问题使用单独的 Recall gate：
+
+```bash
+python -m app.evaluation.retrieval \
+  --dataset eval/retrieval_multihop.golden.jsonl \
+  --corpus eval/corpora/machine_learning_basics.jsonl \
+  --modes hybrid multi_hop_hybrid \
+  --k 1 3 5 \
+  --gate-mode multi_hop_hybrid \
+  --min-hit-at 1=1.00 \
+  --min-recall-at 3=1.00 \
+  --min-recall-at 5=1.00 \
+  --max-p95-latency-ms 150
+```
 
 当前黄金集、基线结果和质量门槛见 [docs/EVALUATION.md](docs/EVALUATION.md)。
 

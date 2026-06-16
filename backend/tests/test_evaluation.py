@@ -62,21 +62,44 @@ def test_score_ranking_handles_expected_no_results():
     assert incorrect["no_answer_correct"] == 0.0
 
 
+def test_score_ranking_tracks_hard_negative_pollution():
+    example = EvaluationExample(
+        query="q",
+        relevant_texts=["correct evidence"],
+        forbidden_texts=["distractor evidence"],
+    )
+    correct = _chunk("c1", "doc-1", "a.pdf")
+    correct.text = "correct evidence"
+    distractor = _chunk("c2", "doc-2", "b.pdf")
+    distractor.text = "distractor evidence"
+
+    clean = score_ranking(example, [correct], [1, 2])
+    polluted = score_ranking(example, [distractor, correct], [1, 2])
+
+    assert clean["hard_negative_free_at_1"] == 1.0
+    assert polluted["hard_negative_free_at_1"] == 0.0
+    assert polluted["hard_negative_free_at_2"] == 0.0
+
+
 def test_aggregate_metrics_reports_macro_averages():
     rows = [
         {
             "reciprocal_rank": 1.0,
             "hit_at_1": 1.0,
             "recall_at_1": 1.0,
+            "hard_negative_free_at_1": 1.0,
             "latency_ms": 10.0,
             "expect_no_results": False,
+            "has_hard_negatives": True,
         },
         {
             "reciprocal_rank": 0.0,
             "hit_at_1": 0.0,
             "recall_at_1": 0.0,
+            "hard_negative_free_at_1": 0.0,
             "latency_ms": 30.0,
             "expect_no_results": False,
+            "has_hard_negatives": True,
         },
     ]
 
@@ -86,6 +109,7 @@ def test_aggregate_metrics_reports_macro_averages():
     assert metrics["hit_at_1"] == 0.5
     assert metrics["avg_latency_ms"] == 20.0
     assert metrics["p95_latency_ms"] == 30.0
+    assert metrics["hard_negative_free_at_1"] == 0.5
 
 
 def test_load_dataset_validates_relevance_targets(tmp_path):
@@ -141,7 +165,9 @@ def test_quality_gate_failures_reports_metric_regressions():
         "metrics": {
             "mrr": 0.89,
             "hit_at_3": 0.94,
+            "recall_at_3": 0.5,
             "no_answer_accuracy": 0.75,
+            "hard_negative_free_at_1": 0.6,
             "p95_latency_ms": 120.0,
         },
     }
@@ -150,6 +176,8 @@ def test_quality_gate_failures_reports_metric_regressions():
         report,
         min_mrr=0.9,
         min_hit_at={3: 0.95},
+        min_recall_at={3: 1.0},
+        min_hard_negative_free_at={1: 0.9},
         min_no_answer_accuracy=0.8,
         max_p95_latency_ms=100.0,
     )
@@ -157,6 +185,8 @@ def test_quality_gate_failures_reports_metric_regressions():
     assert failures == [
         "MRR 0.890 < 0.900",
         "Hit@3 0.940 < 0.950",
+        "Recall@3 0.500 < 1.000",
+        "HardNeg@1 0.600 < 0.900",
         "No-answer accuracy 0.750 < 0.800",
         "P95 latency 120.0ms > 100.0ms",
     ]

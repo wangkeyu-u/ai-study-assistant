@@ -81,7 +81,13 @@ async def chat(request: ChatRequest):
         # Yield debug info
         debug_payload = {
             "query": debug_info.query,
+            "rewritten_query": debug_info.rewritten_query,
+            "retrieval_queries": debug_info.retrieval_queries,
             "embedding_model": debug_info.embedding_model,
+            "retrieval_mode": debug_info.retrieval_mode,
+            "confidence_rejected": debug_info.confidence_rejected,
+            "confidence_score": debug_info.confidence_score,
+            "rejection_reason": debug_info.rejection_reason,
             "top_k_chunks": [c.model_dump() for c in debug_info.top_k_chunks],
             "token_usage": debug_info.token_usage.model_dump(),
             "retrieval_time_ms": debug_info.retrieval_time_ms,

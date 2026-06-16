@@ -43,3 +43,6 @@
 {"query":"教材有没有给出红烧肉的制作步骤？","expect_no_results":true}
 {"query":"资料中是否讨论了马来西亚签证政策？","expect_no_results":true}
 {"query":"文档有没有说明太阳系各行星的公转周期？","expect_no_results":true}
+{"query":"自动驾驶和机器人控制可采用什么学习范式？","relevant_texts":["强化学习通过智能体与环境的交互来学习最优行为策略"],"forbidden_texts":["这是一段市场新闻，用自动驾驶、机器人控制、游戏AI等词描述行业热点"]}
+{"query":"F1分数和精确率、召回率之间是什么关系？","relevant_texts":["F1分数：精确率和召回率的调和平均值"],"forbidden_texts":["本文只说明监控字段需要被采集和告警，不定义F1分数"]}
+{"query":"K-Means和DBSCAN对应哪类学习任务？","relevant_texts":["无监督学习从未标记的数据中发现隐藏的结构和模式"],"forbidden_texts":["这篇随笔只是生活化类比，不说明无监督学习的定义"]}

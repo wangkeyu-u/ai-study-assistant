@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
 
+from app.services.citation_validator import validate_citation_coverage
 from app.services.context_utils import build_context_text
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ class GenerationResult:
     total_tokens: int = 0
     generation_time_ms: float = 0.0
     final_prompt: str = ""
+    citation_validation_failed: bool = False
+    citation_validation_errors: list[str] = field(default_factory=list)
 
 
 SYSTEM_PROMPT = """你是一个学习助手。你的任务是基于提供的参考资料来回答用户的问题。
@@ -45,7 +48,7 @@ SYSTEM_PROMPT = """你是一个学习助手。你的任务是基于提供的参�
 规则：
 1. 只能基于提供的参考资料回答，不要使用你自己的知识。
 2. 如果参考资料中没有足够信息来回答问题，请明确告知："根据现有资料，没有找到足够的信息来回答这个问题。"
-3. 每个事实性陈述后面必须标注引用来源，使用 [编号] 格式。例如："这个概念最早在1990年提出[1]。"
+3. 每个事实性陈述所在的完整句子末尾必须标注引用来源，使用 [编号] 格式。例如："这个概念最早在1990年提出[1]。"
 4. 引用编号对应下方参考资料中的序号。
 5. 回答要简洁、准确、有条理。
 {history_note}
@@ -121,8 +124,22 @@ class Generator:
         content = response.choices[0].message.content or ""
         usage = response.usage
 
-        # Extract citations from the response
-        citations = self.extract_citations(content, chunks)
+        validation = validate_citation_coverage(content, len(chunks))
+        citation_validation_errors = []
+        citation_validation_failed = not validation.valid
+        if citation_validation_failed:
+            citation_validation_errors = [
+                f"invalid_citations={validation.invalid_citation_count}",
+                f"citation_completeness={validation.citation_completeness:.3f}",
+            ]
+            logger.warning(
+                "Generated answer failed citation validation: %s",
+                ", ".join(citation_validation_errors),
+            )
+            content = "根据现有资料，我无法生成带有可靠引用的回答。请换一种问法或检查资料后再试。"
+            citations = []
+        else:
+            citations = self.extract_citations(content, chunks)
 
         return GenerationResult(
             content=content,
@@ -132,6 +149,8 @@ class Generator:
             total_tokens=usage.total_tokens if usage else 0,
             generation_time_ms=elapsed,
             final_prompt=prompt,
+            citation_validation_failed=citation_validation_failed,
+            citation_validation_errors=citation_validation_errors,
         )
 
     async def generate_stream(
@@ -151,6 +170,7 @@ class Generator:
 
         messages = self._build_messages(query, chunks, history)
         full_text = ""
+        streamed_parts: list[str] = []
 
         try:
             stream = await self.client.chat.completions.create(
@@ -164,7 +184,7 @@ class Generator:
                 if chunk.choices and chunk.choices[0].delta.content:
                     text = chunk.choices[0].delta.content
                     full_text += text
-                    yield {"type": "token", "text": text}
+                    streamed_parts.append(text)
 
         except Exception as e:
             logger.error("LLM streaming failed: %s", e)
@@ -172,8 +192,25 @@ class Generator:
             yield {"type": "done"}
             return
 
+        validation = validate_citation_coverage(full_text, len(chunks))
+        if not validation.valid:
+            yield {
+                "type": "citation_validation",
+                "valid": False,
+                "invalid_citation_count": validation.invalid_citation_count,
+                "citation_completeness": validation.citation_completeness,
+            }
+            yield {
+                "type": "token",
+                "text": "根据现有资料，我无法生成带有可靠引用的回答。请换一种问法或检查资料后再试。",
+            }
+        else:
+            # Buffer until citation validation so unsafe uncited text is never emitted.
+            for text in streamed_parts:
+                yield {"type": "token", "text": text}
+
         # After streaming complete, extract citations
-        citations = self.extract_citations(full_text, chunks)
+        citations = self.extract_citations(full_text, chunks) if validation.valid else []
         yield {
             "type": "citations",
             "citations": [

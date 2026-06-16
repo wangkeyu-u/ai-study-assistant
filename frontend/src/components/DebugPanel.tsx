@@ -28,6 +28,29 @@ export default function DebugPanel({ debugInfo, onClose }: DebugPanelProps) {
             <section>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Query</h4>
               <p className="text-sm text-gray-800 bg-gray-50 rounded-lg p-3">{debugInfo.query}</p>
+              {debugInfo.rewritten_query && (
+                <div className="mt-2">
+                  <p className="text-xs text-gray-400 mb-1">Rewritten</p>
+                  <p className="text-xs text-gray-600 bg-blue-50 rounded-lg p-2">
+                    {debugInfo.rewritten_query}
+                  </p>
+                </div>
+              )}
+              {debugInfo.retrieval_queries && debugInfo.retrieval_queries.length > 1 && (
+                <div className="mt-2">
+                  <p className="text-xs text-gray-400 mb-1">Retrieval Queries</p>
+                  <div className="space-y-1">
+                    {debugInfo.retrieval_queries.map((query, index) => (
+                      <p
+                        key={`${query}-${index}`}
+                        className="text-xs text-gray-600 bg-indigo-50 rounded-lg px-2 py-1.5"
+                      >
+                        {index + 1}. {query}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* Embedding Model */}

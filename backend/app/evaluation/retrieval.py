@@ -16,6 +16,7 @@ from pathlib import Path
 from app.config import get_settings
 from app.db.database import init_db
 from app.services.embedder import create_embedder
+from app.services.query_planner import retrieve_with_query_plan
 from app.services.reranker import CrossEncoderReranker
 from app.services.retriever import RetrievedChunk, Retriever
 from app.services.vectorstore import VectorStore
@@ -28,6 +29,10 @@ class EvaluationExample:
     relevant_doc_ids: list[str] = field(default_factory=list)
     relevant_doc_names: list[str] = field(default_factory=list)
     relevant_texts: list[str] = field(default_factory=list)
+    forbidden_chunk_ids: list[str] = field(default_factory=list)
+    forbidden_doc_ids: list[str] = field(default_factory=list)
+    forbidden_doc_names: list[str] = field(default_factory=list)
+    forbidden_texts: list[str] = field(default_factory=list)
     collection_id: str | None = None
     expect_no_results: bool = False
 
@@ -37,6 +42,14 @@ class EvaluationExample:
             *(f"doc:{value}" for value in self.relevant_doc_ids),
             *(f"name:{value}" for value in self.relevant_doc_names),
             *(f"text:{value}" for value in self.relevant_texts),
+        }
+
+    def forbidden_keys(self) -> set[str]:
+        return {
+            *(f"chunk:{value}" for value in self.forbidden_chunk_ids),
+            *(f"doc:{value}" for value in self.forbidden_doc_ids),
+            *(f"name:{value}" for value in self.forbidden_doc_names),
+            *(f"text:{value}" for value in self.forbidden_texts),
         }
 
 
@@ -188,6 +201,18 @@ def matched_relevance_keys(
     return matched
 
 
+def matched_forbidden_keys(
+    example: EvaluationExample,
+    chunk: RetrievedChunk,
+) -> set[str]:
+    """Return hard-negative labels matched by one retrieved chunk."""
+    matched = chunk_keys(chunk) & example.forbidden_keys()
+    matched.update(
+        f"text:{snippet}" for snippet in example.forbidden_texts if snippet in chunk.text
+    )
+    return matched
+
+
 def score_ranking(
     example: EvaluationExample,
     chunks: list[RetrievedChunk],
@@ -195,6 +220,7 @@ def score_ranking(
 ) -> dict:
     """Score one ranked result list against its relevance labels."""
     relevant = example.relevant_keys()
+    forbidden = example.forbidden_keys()
     if example.expect_no_results:
         no_answer_metrics: dict[str, float] = {
             "reciprocal_rank": 1.0 if not chunks else 0.0,
@@ -204,6 +230,7 @@ def score_ranking(
             correct = 1.0 if not chunks[:k] else 0.0
             no_answer_metrics[f"hit_at_{k}"] = correct
             no_answer_metrics[f"recall_at_{k}"] = correct
+            no_answer_metrics[f"hard_negative_free_at_{k}"] = correct
         return no_answer_metrics
 
     first_relevant_rank: int | None = None
@@ -218,10 +245,15 @@ def score_ranking(
     }
     for k in k_values:
         retrieved_relevant: set[str] = set()
+        retrieved_forbidden: set[str] = set()
         for chunk in chunks[:k]:
             retrieved_relevant.update(matched_relevance_keys(example, chunk))
+            retrieved_forbidden.update(matched_forbidden_keys(example, chunk))
         metrics[f"hit_at_{k}"] = 1.0 if retrieved_relevant else 0.0
         metrics[f"recall_at_{k}"] = len(retrieved_relevant) / len(relevant)
+        metrics[f"hard_negative_free_at_{k}"] = (
+            1.0 if not forbidden or not retrieved_forbidden else 0.0
+        )
     return metrics
 
 
@@ -247,6 +279,14 @@ def aggregate_metrics(rows: list[dict], k_values: list[int]) -> dict:
         aggregate[f"recall_at_{k}"] = statistics.fmean(
             row[f"recall_at_{k}"] for row in answerable_rows
         )
+        hard_negative_rows = [
+            row for row in rows if row.get("has_hard_negatives") or row.get("expect_no_results")
+        ]
+        aggregate[f"hard_negative_free_at_{k}"] = (
+            statistics.fmean(row[f"hard_negative_free_at_{k}"] for row in hard_negative_rows)
+            if hard_negative_rows
+            else None
+        )
     return aggregate
 
 
@@ -266,13 +306,24 @@ def evaluate_mode(
     rows = []
     for example in examples:
         start = time.perf_counter()
-        result = retriever.retrieve(example.query, collection_id=example.collection_id)
+        if mode.startswith("multi_hop_"):
+            result, retrieval_queries = retrieve_with_query_plan(
+                retriever,
+                example.query,
+                collection_id=example.collection_id,
+                max_subqueries=get_settings().query_decomposition_max_subqueries,
+            )
+        else:
+            result = retriever.retrieve(example.query, collection_id=example.collection_id)
+            retrieval_queries = [example.query]
         latency_ms = (time.perf_counter() - start) * 1000
         metrics = score_ranking(example, result.chunks, k_values)
         rows.append(
             {
                 "query": example.query,
+                "retrieval_queries": retrieval_queries,
                 "expect_no_results": example.expect_no_results,
+                "has_hard_negatives": bool(example.forbidden_keys()),
                 "confidence_rejected": result.confidence_rejected,
                 "confidence_score": result.confidence_score,
                 "rejection_reason": result.rejection_reason,
@@ -336,7 +387,7 @@ def build_retrievers(
             embedder=embedder,
             top_k=top_k,
             similarity_threshold=settings.similarity_threshold,
-            hybrid_search_enabled=mode in {"hybrid", "hybrid_rerank"},
+            hybrid_search_enabled=mode in {"hybrid", "hybrid_rerank", "multi_hop_hybrid"},
             candidate_multiplier=settings.retrieval_candidate_multiplier,
             rrf_k=settings.rrf_k,
             confidence_gate_enabled=settings.retrieval_confidence_gate_enabled,
@@ -354,6 +405,7 @@ def print_summary(reports: list[dict], k_values: list[int]) -> None:
         "MRR",
         *(f"Hit@{k}" for k in k_values),
         *(f"Recall@{k}" for k in k_values),
+        *(f"HardNeg@{k}" for k in k_values),
         "NoAnswer",
     ]
     print("\t".join(headers))
@@ -364,6 +416,14 @@ def print_summary(reports: list[dict], k_values: list[int]) -> None:
             f"{metrics['mrr']:.3f}",
             *(f"{metrics[f'hit_at_{k}']:.3f}" for k in k_values),
             *(f"{metrics[f'recall_at_{k}']:.3f}" for k in k_values),
+            *(
+                (
+                    f"{metrics[f'hard_negative_free_at_{k}']:.3f}"
+                    if metrics[f"hard_negative_free_at_{k}"] is not None
+                    else "n/a"
+                )
+                for k in k_values
+            ),
             (
                 f"{metrics['no_answer_accuracy']:.3f}"
                 if metrics["no_answer_accuracy"] is not None
@@ -397,7 +457,9 @@ def quality_gate_failures(
     *,
     min_mrr: float | None = None,
     min_hit_at: dict[int, float] | None = None,
+    min_recall_at: dict[int, float] | None = None,
     min_no_answer_accuracy: float | None = None,
+    min_hard_negative_free_at: dict[int, float] | None = None,
     max_p95_latency_ms: float | None = None,
 ) -> list[str]:
     """Return human-readable quality-gate failures for one mode report."""
@@ -412,6 +474,20 @@ def quality_gate_failures(
             failures.append(f"Hit@{k} was not evaluated")
         elif actual < threshold:
             failures.append(f"Hit@{k} {actual:.3f} < {threshold:.3f}")
+    for k, threshold in (min_recall_at or {}).items():
+        metric_name = f"recall_at_{k}"
+        actual = metrics.get(metric_name)
+        if actual is None:
+            failures.append(f"Recall@{k} was not evaluated")
+        elif actual < threshold:
+            failures.append(f"Recall@{k} {actual:.3f} < {threshold:.3f}")
+    for k, threshold in (min_hard_negative_free_at or {}).items():
+        metric_name = f"hard_negative_free_at_{k}"
+        actual = metrics.get(metric_name)
+        if actual is None:
+            failures.append(f"HardNeg@{k} was not evaluated")
+        elif actual < threshold:
+            failures.append(f"HardNeg@{k} {actual:.3f} < {threshold:.3f}")
     no_answer_accuracy = metrics.get("no_answer_accuracy")
     if min_no_answer_accuracy is not None:
         if no_answer_accuracy is None:
@@ -437,7 +513,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--modes",
         nargs="+",
-        choices=("vector", "hybrid", "hybrid_rerank"),
+        choices=("vector", "hybrid", "hybrid_rerank", "multi_hop_hybrid"),
         default=("vector", "hybrid"),
     )
     parser.add_argument("--k", nargs="+", type=int, default=(1, 3, 5))
@@ -448,7 +524,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--gate-mode",
-        choices=("vector", "hybrid", "hybrid_rerank"),
+        choices=("vector", "hybrid", "hybrid_rerank", "multi_hop_hybrid"),
         default="hybrid",
     )
     parser.add_argument("--min-mrr", type=float)
@@ -458,6 +534,20 @@ def parse_args() -> argparse.Namespace:
         default=[],
         metavar="K=VALUE",
         help="Repeatable minimum Hit@K threshold, for example 3=0.95",
+    )
+    parser.add_argument(
+        "--min-recall-at",
+        action="append",
+        default=[],
+        metavar="K=VALUE",
+        help="Repeatable minimum Recall@K threshold, for example 5=1.00",
+    )
+    parser.add_argument(
+        "--min-hard-negative-free-at",
+        action="append",
+        default=[],
+        metavar="K=VALUE",
+        help="Repeatable minimum hard-negative-free@K threshold",
     )
     parser.add_argument("--min-no-answer-accuracy", type=float)
     parser.add_argument("--max-p95-latency-ms", type=float)
@@ -471,9 +561,14 @@ def main() -> None:
         raise SystemExit("--k values must be positive integers")
     try:
         hit_thresholds = parse_hit_thresholds(args.min_hit_at)
+        recall_thresholds = parse_hit_thresholds(args.min_recall_at)
+        hard_negative_thresholds = parse_hit_thresholds(args.min_hard_negative_free_at)
     except ValueError as error:
         raise SystemExit(str(error)) from error
-    missing_k_values = sorted(set(hit_thresholds) - set(k_values))
+    missing_k_values = sorted(
+        (set(hit_thresholds) | set(recall_thresholds) | set(hard_negative_thresholds))
+        - set(k_values)
+    )
     if missing_k_values:
         raise SystemExit(f"Quality gates require missing --k values: {missing_k_values}")
     for name in ("min_mrr", "min_no_answer_accuracy"):
@@ -534,7 +629,7 @@ def main() -> None:
             args.min_no_answer_accuracy,
             args.max_p95_latency_ms,
         )
-    ) or bool(hit_thresholds)
+    ) or bool(hit_thresholds or recall_thresholds or hard_negative_thresholds)
     if gates_enabled:
         gate_report = next(
             (report for report in reports if report["mode"] == args.gate_mode),
@@ -546,7 +641,9 @@ def main() -> None:
             gate_report,
             min_mrr=args.min_mrr,
             min_hit_at=hit_thresholds,
+            min_recall_at=recall_thresholds,
             min_no_answer_accuracy=args.min_no_answer_accuracy,
+            min_hard_negative_free_at=hard_negative_thresholds,
             max_p95_latency_ms=args.max_p95_latency_ms,
         )
         if failures:

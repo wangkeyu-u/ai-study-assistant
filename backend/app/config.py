@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     rrf_k: int = 60
     retrieval_confidence_gate_enabled: bool = True
     vector_only_min_score: float = 0.46
+    query_decomposition_enabled: bool = True
+    query_decomposition_max_subqueries: int = 3
     reranker_enabled: bool = False
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     reranker_top_n: int = 12

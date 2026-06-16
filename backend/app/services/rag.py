@@ -48,8 +48,9 @@ from app.services.generator import GenerationResult, Generator
 from app.services.image_extractor import extract_pdf_images
 from app.services.parser import DocumentParser
 from app.services.quality import batch_score_chunks
+from app.services.query_planner import retrieve_with_query_plan
 from app.services.reranker import CrossEncoderReranker
-from app.services.retriever import RetrievalResult, Retriever
+from app.services.retriever import Retriever
 from app.services.vectorstore import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -330,9 +331,16 @@ class RAGPipeline:
             reranker=self.reranker,
             rerank_top_n=settings.reranker_top_n,
         )
-        retrieval_result: RetrievalResult = retriever.retrieve(
-            rewritten_query, collection_id=collection_id
-        )
+        retrieval_queries = [rewritten_query]
+        if settings.query_decomposition_enabled:
+            retrieval_result, retrieval_queries = retrieve_with_query_plan(
+                retriever,
+                rewritten_query,
+                collection_id=collection_id,
+                max_subqueries=settings.query_decomposition_max_subqueries,
+            )
+        else:
+            retrieval_result = retriever.retrieve(rewritten_query, collection_id=collection_id)
 
         # If no chunks pass the threshold, generator will return a
         # "资料不足" message instead of hallucinating an answer.
@@ -360,6 +368,7 @@ class RAGPipeline:
         debug_info = DebugInfo(
             query=question,
             rewritten_query=rewritten_query if rewritten_query != question else None,
+            retrieval_queries=retrieval_queries,
             embedding_model=settings.embedding_model,
             retrieval_mode=retrieval_result.mode,
             confidence_rejected=retrieval_result.confidence_rejected,

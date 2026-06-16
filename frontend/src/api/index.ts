@@ -90,6 +90,8 @@ export interface ChatMessage {
 
 export interface DebugInfo {
   query: string;
+  rewritten_query?: string | null;
+  retrieval_queries?: string[];
   embedding_model: string;
   retrieval_mode?: string;
   confidence_rejected?: boolean;

@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import statistics
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-_CITATION_RE = re.compile(r"\[(\d+)\]")
-_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[。！？!?])|\n+")
-_REFUSAL_MARKERS = ("没有找到足够的信息", "无法根据现有资料", "资料不足")
+from app.services.citation_validator import (
+    citation_refs,
+    is_refusal,
+    validate_citation_coverage,
+)
 
 
 @dataclass
@@ -45,40 +46,16 @@ def load_answer_dataset(path: str | Path) -> list[AnswerEvaluationExample]:
     return examples
 
 
-def is_refusal(answer: str) -> bool:
-    return any(marker in answer for marker in _REFUSAL_MARKERS)
-
-
-def split_factual_sentences(answer: str) -> list[str]:
-    """Split answer prose while excluding headings and explicit refusals."""
-    sentences = []
-    for part in _SENTENCE_BOUNDARY_RE.split(answer):
-        sentence = part.strip().lstrip("-•*# ")
-        content = _CITATION_RE.sub("", sentence).strip()
-        if len(content) < 4 or is_refusal(content):
-            continue
-        sentences.append(sentence)
-    return sentences
-
-
 def score_answer(example: AnswerEvaluationExample) -> dict[str, float | int | None]:
     """Score deterministic refusal and citation-grounding properties."""
-    refs = [int(value) for value in _CITATION_RE.findall(example.answer)]
+    refs = citation_refs(example.answer)
     valid_refs = [ref for ref in refs if 1 <= ref <= len(example.contexts)]
     unique_valid_refs = sorted(set(valid_refs))
     refusal_correct = float(is_refusal(example.answer) == example.expect_refusal)
 
     citation_validity = len(valid_refs) / len(refs) if refs else float(example.expect_refusal)
-    factual_sentences = split_factual_sentences(example.answer)
-    cited_sentences = sum(
-        any(1 <= int(ref) <= len(example.contexts) for ref in _CITATION_RE.findall(sentence))
-        for sentence in factual_sentences
-    )
-    citation_completeness = (
-        cited_sentences / len(factual_sentences)
-        if factual_sentences
-        else float(example.expect_refusal)
-    )
+    validation = validate_citation_coverage(example.answer, len(example.contexts))
+    citation_completeness = validation.citation_completeness
 
     cited_contexts = [example.contexts[ref - 1] for ref in unique_valid_refs]
     evidence_coverage = (
@@ -106,8 +83,8 @@ def score_answer(example: AnswerEvaluationExample) -> dict[str, float | int | No
         "evidence_coverage": evidence_coverage,
         "citation_evidence_precision": citation_evidence_precision,
         "citation_count": len(refs),
-        "invalid_citation_count": len(refs) - len(valid_refs),
-        "factual_sentence_count": len(factual_sentences),
+        "invalid_citation_count": validation.invalid_citation_count,
+        "factual_sentence_count": validation.factual_sentence_count,
     }
 
 

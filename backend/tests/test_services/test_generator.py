@@ -1,5 +1,8 @@
 """Tests for Generator — citation extraction and prompt building."""
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app.services.generator import Generator
@@ -21,6 +24,23 @@ class FakeChunk:
         self.chunk_index = chunk_index
         self.text = text
         self.heading = heading
+
+
+class FakeStream:
+    """Minimal async stream matching OpenAI chunk shape."""
+
+    def __init__(self, texts):
+        self._texts = iter(texts)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            text = next(self._texts)
+        except StopIteration as error:
+            raise StopAsyncIteration from error
+        return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=text))])
 
 
 @pytest.fixture
@@ -48,6 +68,72 @@ class TestExtractCitations:
         text = "没有引用标记的回答。"
         citations = generator.extract_citations(text, sample_chunks)
         assert citations == []
+
+
+class TestCitationValidation:
+    """Tests for post-generation citation safety gate."""
+
+    @pytest.mark.asyncio
+    async def test_generate_replaces_uncited_factual_answer(self, generator, sample_chunks):
+        generator.client.chat.completions.create = AsyncMock(
+            return_value=SimpleNamespace(
+                choices=[
+                    SimpleNamespace(message=SimpleNamespace(content="这是一个没有引用的事实。"))
+                ],
+                usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        )
+
+        result = await generator.generate("测试问题", sample_chunks)
+
+        assert result.citation_validation_failed is True
+        assert result.citations == []
+        assert "可靠引用" in result.content
+
+    @pytest.mark.asyncio
+    async def test_generate_keeps_fully_cited_answer(self, generator, sample_chunks):
+        generator.client.chat.completions.create = AsyncMock(
+            return_value=SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="这是有引用的事实[1]。"))],
+                usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        )
+
+        result = await generator.generate("测试问题", sample_chunks)
+
+        assert result.citation_validation_failed is False
+        assert result.citations[0].chunk_id == "c1"
+        assert result.content == "这是有引用的事实[1]。"
+
+    @pytest.mark.asyncio
+    async def test_generate_stream_buffers_until_citation_validation(
+        self, generator, sample_chunks
+    ):
+        generator.client.chat.completions.create = AsyncMock(
+            return_value=FakeStream(["这是一个", "没有引用的事实。"])
+        )
+
+        events = [event async for event in generator.generate_stream("测试问题", sample_chunks)]
+
+        assert events[0]["type"] == "citation_validation"
+        assert events[1]["type"] == "token"
+        assert "可靠引用" in events[1]["text"]
+        assert all(event.get("text") != "这是一个" for event in events)
+
+    @pytest.mark.asyncio
+    async def test_generate_stream_emits_citations_after_valid_answer(
+        self, generator, sample_chunks
+    ):
+        generator.client.chat.completions.create = AsyncMock(
+            return_value=FakeStream(["这是有引用", "的事实[1]。"])
+        )
+
+        events = [event async for event in generator.generate_stream("测试问题", sample_chunks)]
+
+        assert events[0] == {"type": "token", "text": "这是有引用"}
+        assert events[1] == {"type": "token", "text": "的事实[1]。"}
+        assert events[2]["type"] == "citations"
+        assert events[2]["citations"][0]["chunk_id"] == "c1"
 
     def test_duplicate_citations_deduplicated(self, generator, sample_chunks):
         text = "引用[1]，再引用[1]，还有[2]。"

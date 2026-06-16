@@ -22,6 +22,8 @@ def test_settings_defaults(monkeypatch):
     assert s.rrf_k == 60
     assert s.retrieval_confidence_gate_enabled is True
     assert s.vector_only_min_score == 0.46
+    assert s.query_decomposition_enabled is True
+    assert s.query_decomposition_max_subqueries == 3
     assert s.reranker_enabled is False
     assert s.reranker_model == "BAAI/bge-reranker-v2-m3"
     assert s.reranker_top_n == 12
