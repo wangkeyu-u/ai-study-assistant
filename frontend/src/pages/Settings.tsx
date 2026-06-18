@@ -52,7 +52,9 @@ export default function Settings() {
     loadStatus();
   }, [loadStatus]);
 
-  const currentProvider = modelCatalog?.providers.find((provider) => provider.id === selectedProvider);
+  const currentProvider = modelCatalog?.providers.find(
+    (provider) => provider.id === selectedProvider
+  );
   const currentModels = currentProvider?.models || [];
   const resolvedModel = selectedModel === '__custom__' ? customModel.trim() : selectedModel;
 
