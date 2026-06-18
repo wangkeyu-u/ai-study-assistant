@@ -201,8 +201,8 @@
 
   "settings": {
     "title": "设置",
-    "apiConfig": "OpenAI API 配置",
-    "apiConfigDesc": "配置你的 OpenAI API Key 以启用智能问答、测验生成、知识图谱等功能",
+    "apiConfig": "大模型 API 配置",
+    "apiConfigDesc": "选择模型供应商并配置对应的 API 凭证",
     "status": "当前状态：",
     "configured": "已配置",
     "notConfigured": "未配置",

@@ -182,8 +182,14 @@ def _read_env_file_key(key: str) -> str:
     return ""
 
 
+def find_provider(provider_id: str) -> ProviderPreset | None:
+    """Return an exact provider match without silently changing providers."""
+    return next((provider for provider in PROVIDERS if provider.id == provider_id), None)
+
+
 def get_provider(provider_id: str) -> ProviderPreset:
-    return next((provider for provider in PROVIDERS if provider.id == provider_id), PROVIDERS[0])
+    """Resolve a provider, retaining the OpenAI fallback for legacy env files."""
+    return find_provider(provider_id) or PROVIDERS[0]
 
 
 def provider_catalog() -> list[dict[str, Any]]:

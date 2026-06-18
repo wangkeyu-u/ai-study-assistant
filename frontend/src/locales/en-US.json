@@ -201,8 +201,8 @@
 
   "settings": {
     "title": "Settings",
-    "apiConfig": "OpenAI API Configuration",
-    "apiConfigDesc": "Configure your OpenAI API Key to enable Q&A, quiz generation, and knowledge graph features",
+    "apiConfig": "LLM Provider Configuration",
+    "apiConfigDesc": "Choose a model provider and configure its API credentials",
     "status": "Status:",
     "configured": "Configured",
     "notConfigured": "Not Configured",

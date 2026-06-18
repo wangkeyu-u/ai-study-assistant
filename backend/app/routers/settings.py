@@ -1,16 +1,20 @@
 """Settings API — read/write runtime configuration."""
 
 import os
+import tempfile
+import threading
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.services.model_catalog import get_provider, provider_catalog, resolve_llm_client_config
+from app.services.model_catalog import find_provider, provider_catalog, resolve_llm_client_config
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
+_ENV_WRITE_LOCK = threading.Lock()
 
 
 class ApiKeyStatus(BaseModel):
@@ -61,28 +65,63 @@ def _read_env_key(key: str) -> str:
     return ""
 
 
-def _write_env_key(key: str, value: str) -> None:
-    """Write or update a key in the .env file."""
-    lines: list[str] = []
-    found = False
+def _write_env_values(updates: dict[str, str]) -> None:
+    """Atomically update .env values and keep secrets private to the owner."""
+    if any("\n" in value or "\r" in value for value in updates.values()):
+        raise ValueError("Environment values cannot contain line breaks")
+    with _ENV_WRITE_LOCK:
+        lines = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
+        remaining = dict(updates)
+        output: list[str] = []
 
-    if ENV_FILE.exists():
-        for line in ENV_FILE.read_text().splitlines():
+        for line in lines:
             stripped = line.strip()
             if stripped.startswith("#") or "=" not in stripped:
-                lines.append(line)
+                output.append(line)
                 continue
-            k, _ = stripped.split("=", 1)
-            if k.strip() == key:
-                lines.append(f"{key}={value}")
-                found = True
+            key, _ = stripped.split("=", 1)
+            key = key.strip()
+            if key in remaining:
+                output.append(f"{key}={remaining.pop(key)}")
             else:
-                lines.append(line)
+                output.append(line)
 
-    if not found:
-        lines.append(f"{key}={value}")
+        output.extend(f"{key}={value}" for key, value in remaining.items())
+        ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix=f".{ENV_FILE.name}.", dir=ENV_FILE.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+                temp_file.write("\n".join(output) + "\n")
+            os.chmod(temp_name, 0o600)
+            os.replace(temp_name, ENV_FILE)
+        finally:
+            if os.path.exists(temp_name):
+                os.unlink(temp_name)
 
-    ENV_FILE.write_text("\n".join(lines) + "\n")
+
+def _write_env_key(key: str, value: str) -> None:
+    _write_env_values({key: value})
+
+
+def _validate_base_url(value: str) -> str:
+    """Accept only absolute HTTP(S) API endpoints without embedded credentials."""
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Base URL must be an absolute HTTP(S) URL")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise HTTPException(
+            status_code=400,
+            detail="Base URL cannot contain credentials or a fragment",
+        )
+    return value.rstrip("/")
+
+
+def _validate_single_line(value: str, field_name: str) -> str:
+    if "\n" in value or "\r" in value:
+        raise HTTPException(status_code=400, detail=f"{field_name} cannot contain line breaks")
+    return value
 
 
 def _mask_key(key: str) -> str:
@@ -125,7 +164,7 @@ async def get_api_key_status():
         key_preview=_mask_key(key),
         llm_provider=settings.llm_provider,
         llm_model=settings.llm_model,
-        llm_base_url=settings.llm_base_url or settings.openai_base_url or None,
+        llm_base_url=str(llm_config["base_url"] or "") or None,
         embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
     )
@@ -137,6 +176,7 @@ async def update_api_key(body: ApiKeyUpdate):
     key = body.api_key.strip()
     if not key:
         return ApiKeyUpdateResponse(success=False, message="API Key 不能为空")
+    _validate_single_line(key, "API key")
 
     # Write to .env file
     _write_env_key("OPENAI_API_KEY", key)
@@ -156,12 +196,13 @@ async def get_model_catalog():
     from app.config import get_settings
 
     settings = get_settings()
+    llm_config = resolve_llm_client_config(settings)
     return {
         "providers": provider_catalog(),
         "current": {
             "llm_provider": settings.llm_provider,
             "llm_model": settings.llm_model,
-            "llm_base_url": settings.llm_base_url or settings.openai_base_url or None,
+            "llm_base_url": str(llm_config["base_url"] or "") or None,
         },
     }
 
@@ -171,29 +212,33 @@ async def update_model_selection(body: ModelSelectionUpdate):
     """Update LLM provider/model settings in .env and refresh runtime generator."""
     from app.config import get_settings
 
-    provider = get_provider(body.llm_provider)
-    model = body.llm_model.strip()
+    provider = find_provider(body.llm_provider)
+    if provider is None:
+        raise HTTPException(status_code=400, detail=f"Unknown LLM provider: {body.llm_provider}")
+    model = _validate_single_line(body.llm_model.strip(), "Model")
     if not model:
-        return ModelSelectionResponse(
-            success=False,
-            message="Model cannot be empty",
-            llm_provider=body.llm_provider,
-            llm_model=body.llm_model,
-            llm_base_url=body.llm_base_url,
-        )
+        raise HTTPException(status_code=400, detail="Model cannot be empty")
 
-    base_url = (body.llm_base_url or provider.base_url or "").strip()
-    _write_env_key("ASA_LLM_PROVIDER", provider.id)
-    _write_env_key("ASA_LLM_MODEL", model)
-    _write_env_key("ASA_LLM_BASE_URL", base_url)
+    base_url = _validate_base_url((body.llm_base_url or provider.base_url or "").strip())
+    if provider.id == "custom" and not base_url:
+        raise HTTPException(status_code=400, detail="Custom providers require a Base URL")
+    env_updates = {
+        "ASA_LLM_PROVIDER": provider.id,
+        "ASA_LLM_MODEL": model,
+        "ASA_LLM_BASE_URL": base_url,
+    }
     if body.api_key and body.api_key.strip():
-        api_key = body.api_key.strip()
-        _write_env_key(provider.api_key_env, api_key)
+        api_key = _validate_single_line(body.api_key.strip(), "API key")
+        env_updates[provider.api_key_env] = api_key
+        if provider.id == "openai":
+            env_updates["OPENAI_API_KEY"] = api_key
+
+    _write_env_values(env_updates)
+
+    if body.api_key and body.api_key.strip():
         os.environ[provider.api_key_env] = api_key
         if provider.id == "openai":
-            _write_env_key("OPENAI_API_KEY", api_key)
             os.environ["OPENAI_API_KEY"] = api_key
-
     os.environ["ASA_LLM_PROVIDER"] = provider.id
     os.environ["ASA_LLM_MODEL"] = model
     os.environ["ASA_LLM_BASE_URL"] = base_url

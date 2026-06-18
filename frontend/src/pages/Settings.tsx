@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useTranslation, Trans } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import {
   ApiKeyStatus,
   ModelCatalogResponse,
   getApiKeyStatus,
   getModelCatalog,
-  updateApiKey,
   updateModelSelection,
 } from '../api';
 
@@ -29,8 +28,17 @@ export default function Settings() {
       const [s, catalog] = await Promise.all([getApiKeyStatus(), getModelCatalog()]);
       setStatus(s);
       setModelCatalog(catalog);
-      setSelectedProvider(catalog.current.llm_provider || s.llm_provider);
-      setSelectedModel(catalog.current.llm_model || s.llm_model);
+      const providerId = catalog.current.llm_provider || s.llm_provider;
+      const provider = catalog.providers.find((item) => item.id === providerId);
+      const modelId = catalog.current.llm_model || s.llm_model;
+      setSelectedProvider(provider?.id || 'custom');
+      if (provider?.models.some((model) => model.id === modelId)) {
+        setSelectedModel(modelId);
+        setCustomModel('');
+      } else {
+        setSelectedModel('__custom__');
+        setCustomModel(modelId);
+      }
       setBaseUrl(catalog.current.llm_base_url || '');
     } catch {
       setMessage(t('settings.error_connect'));
@@ -43,30 +51,6 @@ export default function Settings() {
   useEffect(() => {
     loadStatus();
   }, [loadStatus]);
-
-  const handleSave = async () => {
-    if (!apiKey.trim()) {
-      setMessage(t('settings.pleaseEnterKey'));
-      setMessageType('error');
-      return;
-    }
-    setSaving(true);
-    setMessage('');
-    try {
-      const result = await updateApiKey(apiKey.trim());
-      setMessage(result.message);
-      setMessageType(result.success ? 'success' : 'error');
-      if (result.success) {
-        setApiKey('');
-        await loadStatus();
-      }
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : t('settings.error_update'));
-      setMessageType('error');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const currentProvider = modelCatalog?.providers.find((provider) => provider.id === selectedProvider);
   const currentModels = currentProvider?.models || [];
@@ -250,30 +234,21 @@ export default function Settings() {
                   ? t('settings.providerKeyLabel', { env: currentProvider.api_key_env })
                   : t('settings.apiKeyLabel')}
               </label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type={showKey ? 'text' : 'password'}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
-                    className="spell-input w-full px-4 py-2.5 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono transition-shadow"
-                    onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey(!showKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
-                  >
-                    {showKey ? t('common.hide') : t('common.show')}
-                  </button>
-                </div>
+              <div className="relative">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="spell-input w-full px-4 py-2.5 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono transition-shadow"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveModel()}
+                />
                 <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="spell-button px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-500 text-white rounded-lg hover:from-blue-700 hover:to-indigo-600 disabled:bg-gray-400 text-sm font-medium transition-colors whitespace-nowrap"
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
                 >
-                  {saving ? t('common.saving') : t('common.save')}
+                  {showKey ? t('common.hide') : t('common.show')}
                 </button>
               </div>
               <p className="text-xs text-gray-400 mt-2">{t('settings.securityNote')}</p>
@@ -312,21 +287,7 @@ export default function Settings() {
               <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">
                 1
               </span>
-              <p>
-                <Trans
-                  i18nKey="settings.guide1"
-                  components={{
-                    a: (
-                      <a
-                        href="https://platform.openai.com/api-keys"
-                        target="_blank"
-                        rel="noopener"
-                        className="text-blue-600 hover:underline"
-                      />
-                    ),
-                  }}
-                />
-              </p>
+              <p>{t('settings.guide1')}</p>
             </div>
             <div className="flex gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">
