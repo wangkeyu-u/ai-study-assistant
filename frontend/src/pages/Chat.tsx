@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import {
   ChatSession,
   ChatMessage,
@@ -25,6 +26,7 @@ interface MessageWithCitations extends ChatMessage {
 
 export default function ChatPage() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageWithCitations[]>([]);
@@ -62,6 +64,14 @@ export default function ChatPage() {
       .then(setChatCollections)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const suggestedQuestion = searchParams.get('q');
+    if (!suggestedQuestion) return;
+    setInput(suggestedQuestion);
+    inputRef.current?.focus();
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

@@ -68,6 +68,20 @@
     "noDocumentsHint": "上传 PDF、TXT 或 Markdown 格式的学习资料，系统会自动解析内容并建立知识索引。",
     "uploadFirst": "上传第一个文档",
     "orCreateNote": "或新建笔记",
+    "loadDemo": "载入面试演示",
+    "loadingDemo": "正在构建演示...",
+    "interviewDemo": "面试演示模式",
+    "demoReady": "RAG 核心能力演示已就绪",
+    "demoHint": "依次体验有据回答、多跳综合与安全拒答。",
+    "readyToAsk": "已建立索引",
+    "demoQuestion1": "有据回答",
+    "demoQuestion2": "多跳综合",
+    "demoQuestion3": "安全拒答",
+    "demoQuestionText1": "这个系统通过哪些机制降低 RAG 回答中的幻觉风险？",
+    "demoQuestionText2": "混合检索、多跳查询和质量评估是如何协同工作的？请结合指标说明。",
+    "demoQuestionText3": "资料是否说明量子计算会在 2028 年全面替代 GPU？",
+    "askDocument": "提问",
+    "askDocumentPrompt": "请总结《{{filename}}》的核心观点，并用引用支持回答。",
     "status_ready": "✓ 就绪",
     "status_error": "✕ 失败",
     "status_processing": "⏳ 处理中",
@@ -104,7 +118,8 @@
     "error_deleteCollection": "删除分组失败",
     "error_assignCollection": "分配分组失败",
     "error_exportBackup": "备份导出失败",
-    "error_import": "导入失败"
+    "error_import": "导入失败",
+    "error_demo": "构建面试演示失败"
   },
 
   "quiz": {

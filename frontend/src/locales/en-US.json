@@ -68,6 +68,20 @@
     "noDocumentsHint": "Upload PDF, TXT or Markdown files, and the system will automatically parse and index them.",
     "uploadFirst": "Upload First Document",
     "orCreateNote": "Or Create Note",
+    "loadDemo": "Load Interview Demo",
+    "loadingDemo": "Building demo...",
+    "interviewDemo": "Interview demo",
+    "demoReady": "Your RAG showcase is ready",
+    "demoHint": "Try grounded retrieval, multi-hop synthesis, and safe refusal.",
+    "readyToAsk": "Indexed",
+    "demoQuestion1": "Grounded answer",
+    "demoQuestion2": "Multi-hop reasoning",
+    "demoQuestion3": "Safe refusal",
+    "demoQuestionText1": "How does this system reduce hallucinations in RAG answers?",
+    "demoQuestionText2": "How do hybrid retrieval, multi-hop queries, and quality evaluation work together? Include the metrics.",
+    "demoQuestionText3": "Does the material say quantum computing will completely replace GPUs in 2028?",
+    "askDocument": "Ask",
+    "askDocumentPrompt": "Summarize the core ideas in {{filename}} and support the answer with citations.",
     "status_ready": "✓ Ready",
     "status_error": "✕ Failed",
     "status_processing": "⏳ Processing",
@@ -104,7 +118,8 @@
     "error_deleteCollection": "Failed to delete collection",
     "error_assignCollection": "Failed to assign collection",
     "error_exportBackup": "Backup export failed",
-    "error_import": "Import failed"
+    "error_import": "Import failed",
+    "error_demo": "Failed to build the interview demo"
   },
 
   "quiz": {

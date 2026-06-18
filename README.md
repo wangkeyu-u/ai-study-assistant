@@ -18,6 +18,7 @@ It is designed as more than a chat-with-docs demo: the project includes hybrid r
 - **Learning workflow**: upload documents, ask cited questions, generate quizzes, review mistakes, export Anki cards, and explore a concept graph.
 - **Local-first storage**: documents, SQLite metadata, and ChromaDB indexes live on the user's machine.
 - **Debuggability**: the Debug Panel exposes rewritten queries, retrieval subqueries, retrieved chunks, retrieval sources, token usage, and latency.
+- **Interview demo mode**: load a built-in RAG system document in one click, then demonstrate grounded answers, multi-hop synthesis, and safe refusal with curated questions.
 
 Current isolated hybrid retrieval baseline:
 
@@ -126,6 +127,10 @@ Open:
 ```text
 http://localhost:5173
 ```
+
+For a guided product demo, open **Documents** and click **Load Interview Demo**. The app
+indexes a built-in production RAG note and presents three questions that showcase cited
+retrieval, multi-hop reasoning, and no-answer safety behavior.
 
 ## Local Models
 

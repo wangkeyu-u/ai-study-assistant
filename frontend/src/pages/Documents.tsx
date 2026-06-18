@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   Document,
   Collection,
@@ -20,6 +21,12 @@ import {
   Summary,
   getErrorMessage,
 } from '../api';
+import {
+  DEMO_DOCUMENT_CONTENT,
+  DEMO_DOCUMENT_FILENAME,
+  DEMO_DOCUMENT_TITLE,
+  DEMO_QUESTIONS,
+} from '../demo';
 
 const TAG_COLORS = [
   'bg-blue-50 text-blue-700 border-blue-200',
@@ -42,6 +49,7 @@ function getTagColor(tag: string) {
 
 export default function Documents() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -61,6 +69,7 @@ export default function Documents() {
   const [newCollDesc, setNewCollDesc] = useState('');
   const [backupLoading, setBackupLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -158,6 +167,33 @@ export default function Documents() {
     } catch (error: unknown) {
       setError(getErrorMessage(error, t('documents.error_createNote')));
     }
+  };
+
+  const handleLoadDemo = async () => {
+    setDemoLoading(true);
+    setError(null);
+    try {
+      if (!docs.some((doc) => doc.filename === DEMO_DOCUMENT_FILENAME)) {
+        await createNote(
+          DEMO_DOCUMENT_TITLE,
+          DEMO_DOCUMENT_CONTENT,
+          selectedCollection || undefined
+        );
+        await fetchDocs(selectedCollection);
+      }
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, t('documents.error_demo')));
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  const openQuestion = (question: string) => {
+    navigate(`/chat?q=${encodeURIComponent(question)}`);
+  };
+
+  const askAboutDocument = (filename: string) => {
+    openQuestion(t('documents.askDocumentPrompt', { filename }));
   };
 
   const handleAddTag = async (docId: string) => {
@@ -373,6 +409,13 @@ export default function Documents() {
             >
               {t('documents.newNote')}
             </button>
+            <button
+              onClick={handleLoadDemo}
+              disabled={demoLoading}
+              className="px-5 py-2.5 bg-amber-50 text-amber-800 rounded-lg text-sm hover:bg-amber-100 transition-colors border border-amber-200 font-medium disabled:opacity-50"
+            >
+              {demoLoading ? t('documents.loadingDemo') : t('documents.loadDemo')}
+            </button>
           </div>
           <input
             ref={fileInputRef}
@@ -393,6 +436,40 @@ export default function Documents() {
 
       {/* Document list */}
       <div className="flex-1 overflow-auto p-6">
+        {docs.some((doc) => doc.filename === DEMO_DOCUMENT_FILENAME) && (
+          <div className="mb-5 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-cyan-50 p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">
+                  {t('documents.interviewDemo')}
+                </p>
+                <h3 className="mt-1 text-base font-semibold text-slate-800">
+                  {t('documents.demoReady')}
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">{t('documents.demoHint')}</p>
+              </div>
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+                {t('documents.readyToAsk')}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {DEMO_QUESTIONS.map((item, index) => (
+                <button
+                  key={item.kind}
+                  onClick={() => openQuestion(t(item.questionKey))}
+                  className="group rounded-xl border border-white bg-white/90 p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
+                >
+                  <span className="text-[11px] font-medium text-indigo-500">
+                    {t(`documents.demoQuestion${index + 1}`)}
+                  </span>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-700 group-hover:text-indigo-700">
+                    {t(item.questionKey)}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="text-center">
@@ -422,6 +499,13 @@ export default function Documents() {
                   className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 transition-colors"
                 >
                   {t('documents.orCreateNote')}
+                </button>
+                <button
+                  onClick={handleLoadDemo}
+                  disabled={demoLoading}
+                  className="px-4 py-2 bg-amber-50 text-amber-700 rounded-lg text-sm hover:bg-amber-100 transition-colors border border-amber-200 disabled:opacity-50"
+                >
+                  {demoLoading ? t('documents.loadingDemo') : t('documents.loadDemo')}
                 </button>
               </div>
             </div>
@@ -465,6 +549,14 @@ export default function Documents() {
                           ? t('documents.status_error')
                           : t('documents.status_processing')}
                     </span>
+                    {doc.status === 'ready' && (
+                      <button
+                        onClick={() => askAboutDocument(doc.filename)}
+                        className="text-xs px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-100 hover:border-blue-200"
+                      >
+                        {t('documents.askDocument')}
+                      </button>
+                    )}
                     {doc.status === 'ready' && (
                       <button
                         onClick={() => handleGenerateSummary(doc.id)}
