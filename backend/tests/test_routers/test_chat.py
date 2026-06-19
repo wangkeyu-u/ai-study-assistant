@@ -41,6 +41,28 @@ class TestChatEndpoint:
         # Should still return 200 (the generator handles empty input)
         assert response.status_code == 200
 
+    def test_chat_passes_document_scope_to_pipeline(self, test_app, mock_rag_pipeline):
+        response = test_app.post(
+            "/api/chat",
+            json={"message": "对比", "document_ids": ["doc-a", "doc-b"]},
+        )
+
+        assert response.status_code == 200
+        mock_rag_pipeline.query.assert_awaited_once_with(
+            "对比",
+            history=[],
+            collection_id=None,
+            document_ids=["doc-a", "doc-b"],
+        )
+
+    def test_chat_limits_document_scope(self, test_app):
+        response = test_app.post(
+            "/api/chat",
+            json={"message": "对比", "document_ids": [f"doc-{index}" for index in range(6)]},
+        )
+
+        assert response.status_code == 422
+
     def test_failed_new_chat_does_not_leave_empty_session(self, test_app, mock_rag_pipeline):
         """A failed first turn should not leave an unusable empty session."""
         mock_rag_pipeline.query.side_effect = RuntimeError("model unavailable")

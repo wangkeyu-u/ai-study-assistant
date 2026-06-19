@@ -225,6 +225,34 @@ async def get_document_chunks(doc_id: str):
         ]
 
 
+@router.get("/{doc_id}/file")
+async def get_document_file(doc_id: str):
+    """Serve an original document so citations can open their source."""
+    settings = get_settings()
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT file_path, file_type FROM documents WHERE id=?",
+            (doc_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="文档不存在")
+
+    file_path = os.path.realpath(row["file_path"])
+    allowed_dir = os.path.realpath(settings.documents_dir)
+    if not file_path.startswith(allowed_dir + os.sep):
+        raise HTTPException(status_code=403, detail="文档路径无效")
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="原始文档文件不存在")
+
+    media_types = {
+        "pdf": "application/pdf",
+        "txt": "text/plain; charset=utf-8",
+        "md": "text/markdown; charset=utf-8",
+        "note": "text/plain; charset=utf-8",
+    }
+    return FileResponse(file_path, media_type=media_types.get(row["file_type"]))
+
+
 # ── Delete ─────────────────────────────────────────────────
 
 

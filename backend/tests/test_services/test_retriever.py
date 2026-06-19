@@ -139,6 +139,61 @@ def test_lexical_retrieval_respects_collection_filter(tmp_db):
     )
 
 
+def test_hybrid_retrieval_respects_document_filter(tmp_db):
+    _insert_chunk("doc-a", "chunk-a", "RAG citation validation", filename="a.pdf")
+    _insert_chunk("doc-b", "chunk-b", "RAG citation validation", filename="b.pdf")
+    embedder = MagicMock()
+    embedder.embed_query.return_value = [0.1]
+    vector_store = MagicMock()
+    vector_store.search.return_value = []
+    retriever = Retriever(vector_store, embedder, top_k=5)
+
+    result = retriever.retrieve("RAG citation validation", document_ids=["doc-b"])
+
+    assert [chunk.chunk_id for chunk in result.chunks] == ["chunk-b"]
+    vector_store.search.assert_called_once_with(
+        query_embedding=[0.1],
+        top_k=20,
+        where_filter={"doc_id": {"$in": ["doc-b"]}},
+    )
+
+
+def test_comparison_scope_keeps_evidence_from_each_document(tmp_db):
+    embedder = MagicMock()
+    embedder.embed_query.return_value = [0.1]
+    vector_store = MagicMock()
+    vector_store.search.return_value = [
+        VectorSearchResult(
+            chunk_id="a-1",
+            text="high score from A",
+            score=0.95,
+            metadata={"doc_id": "doc-a", "doc_name": "a.pdf", "chunk_index": 0},
+        ),
+        VectorSearchResult(
+            chunk_id="a-2",
+            text="second score from A",
+            score=0.9,
+            metadata={"doc_id": "doc-a", "doc_name": "a.pdf", "chunk_index": 1},
+        ),
+        VectorSearchResult(
+            chunk_id="b-1",
+            text="lower score from B",
+            score=0.7,
+            metadata={"doc_id": "doc-b", "doc_name": "b.pdf", "chunk_index": 0},
+        ),
+    ]
+    retriever = Retriever(
+        vector_store,
+        embedder,
+        top_k=2,
+        hybrid_search_enabled=False,
+    )
+
+    result = retriever.retrieve("compare", document_ids=["doc-a", "doc-b"])
+
+    assert {chunk.doc_id for chunk in result.chunks} == {"doc-a", "doc-b"}
+
+
 def test_hybrid_retrieval_recovers_short_exact_term(tmp_db):
     _insert_chunk("doc-f1", "chunk-f1", "F1分数是精确率和召回率的调和平均数。")
     embedder = MagicMock()

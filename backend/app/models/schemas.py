@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ── Document ───────────────────────────────────────────────
 
@@ -61,9 +61,11 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     message: str
     collection_id: str | None = None
+    document_ids: list[str] = Field(default_factory=list, max_length=5)
 
 
 class CitationData(BaseModel):
+    doc_id: str
     doc_name: str
     page_num: int | None = None
     chunk_id: str

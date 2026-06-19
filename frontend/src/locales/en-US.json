@@ -49,7 +49,12 @@
     "exportMD": "Export MD",
     "confirmDelete": "Delete this conversation?",
     "sendFailed": "Send failed",
-    "exportMDTitle": "Export as Markdown file"
+    "exportMDTitle": "Export as Markdown file",
+    "documentScope": "Document scope",
+    "compareScope": "Comparison scope",
+    "selectedDocuments": "Selected documents",
+    "clearScope": "Clear scope",
+    "openSource": "Open original source"
   },
 
   "documents": {
@@ -82,6 +87,11 @@
     "demoQuestionText3": "Does the material say quantum computing will completely replace GPUs in 2028?",
     "askDocument": "Ask",
     "askDocumentPrompt": "Summarize the core ideas in {{filename}} and support the answer with citations.",
+    "selectForCompare": "Select {{filename}} for comparison",
+    "selectedForCompare": "{{count}} document(s) selected",
+    "compareLimit": "Select 2–5 documents",
+    "compareNow": "Compare documents",
+    "comparePrompt": "Compare {{names}}. Present shared ideas, differences, conflicts, and a cited conclusion in a structured table.",
     "status_ready": "✓ Ready",
     "status_error": "✕ Failed",
     "status_processing": "⏳ Processing",

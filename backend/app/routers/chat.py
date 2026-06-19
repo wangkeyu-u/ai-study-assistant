@@ -52,6 +52,7 @@ async def chat(request: ChatRequest):
                 request.message,
                 history=history,
                 collection_id=request.collection_id,
+                document_ids=request.document_ids,
             )
         except Exception as e:
             logger.exception("RAG query failed for session %s", session_id)
@@ -246,6 +247,7 @@ async def get_session_messages(session_id: str):
                 citations_by_msg[mid] = []
             citations_by_msg[mid].append(
                 CitationData(
+                    doc_id=c["doc_id"],
                     doc_name=c["doc_name"],
                     page_num=c["page_num"],
                     chunk_id=c["chunk_id"],

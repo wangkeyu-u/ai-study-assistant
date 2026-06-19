@@ -49,7 +49,12 @@
     "exportMD": "导出 MD",
     "confirmDelete": "确认删除此会话？",
     "sendFailed": "发送失败",
-    "exportMDTitle": "导出为 Markdown 文件"
+    "exportMDTitle": "导出为 Markdown 文件",
+    "documentScope": "单文档范围",
+    "compareScope": "多文档对比范围",
+    "selectedDocuments": "已选择文档",
+    "clearScope": "清除范围",
+    "openSource": "打开引用原文"
   },
 
   "documents": {
@@ -82,6 +87,11 @@
     "demoQuestionText3": "资料是否说明量子计算会在 2028 年全面替代 GPU？",
     "askDocument": "提问",
     "askDocumentPrompt": "请总结《{{filename}}》的核心观点，并用引用支持回答。",
+    "selectForCompare": "选择《{{filename}}》进行对比",
+    "selectedForCompare": "已选择 {{count}} 篇文档",
+    "compareLimit": "请选择 2–5 篇文档",
+    "compareNow": "开始对比",
+    "comparePrompt": "请对比 {{names}}，用结构化表格说明共同观点、差异、冲突，并给出带引用的综合结论。",
     "status_ready": "✓ 就绪",
     "status_error": "✕ 失败",
     "status_processing": "⏳ 处理中",

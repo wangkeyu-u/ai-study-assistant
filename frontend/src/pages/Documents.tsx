@@ -70,6 +70,7 @@ export default function Documents() {
   const [backupLoading, setBackupLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
+  const [compareDocumentIds, setCompareDocumentIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -192,8 +193,36 @@ export default function Documents() {
     navigate(`/chat?q=${encodeURIComponent(question)}`);
   };
 
-  const askAboutDocument = (filename: string) => {
-    openQuestion(t('documents.askDocumentPrompt', { filename }));
+  const askAboutDocument = (doc: Document) => {
+    navigate(
+      `/chat?documents=${encodeURIComponent(doc.id)}&names=${encodeURIComponent(doc.filename)}&q=${encodeURIComponent(
+        t('documents.askDocumentPrompt', { filename: doc.filename })
+      )}`
+    );
+  };
+
+  const toggleCompareDocument = (docId: string) => {
+    setCompareDocumentIds((current) =>
+      current.includes(docId)
+        ? current.filter((id) => id !== docId)
+        : current.length < 5
+          ? [...current, docId]
+          : current
+    );
+  };
+
+  const startComparison = () => {
+    const selected = docs.filter((doc) => compareDocumentIds.includes(doc.id));
+    if (selected.length < 2) return;
+    navigate(
+      `/chat?documents=${encodeURIComponent(selected.map((doc) => doc.id).join(','))}` +
+        `&names=${encodeURIComponent(selected.map((doc) => doc.filename).join('|'))}` +
+        `&q=${encodeURIComponent(
+          t('documents.comparePrompt', {
+            names: selected.map((doc) => doc.filename).join('、'),
+          })
+        )}`
+    );
   };
 
   const handleAddTag = async (docId: string) => {
@@ -436,6 +465,28 @@ export default function Documents() {
 
       {/* Document list */}
       <div className="flex-1 overflow-auto p-6">
+        {compareDocumentIds.length > 0 && (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <span className="font-medium">
+              {t('documents.selectedForCompare', { count: compareDocumentIds.length })}
+            </span>
+            <span className="text-xs text-blue-600">{t('documents.compareLimit')}</span>
+            <div className="flex-1" />
+            <button
+              onClick={() => setCompareDocumentIds([])}
+              className="px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-100 rounded-lg"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={startComparison}
+              disabled={compareDocumentIds.length < 2}
+              className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {t('documents.compareNow')}
+            </button>
+          </div>
+        )}
         {docs.some((doc) => doc.filename === DEMO_DOCUMENT_FILENAME) && (
           <div className="mb-5 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-cyan-50 p-5 shadow-sm">
             <div className="flex items-start justify-between gap-4">
@@ -519,6 +570,15 @@ export default function Documents() {
               >
                 <div className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
+                    {doc.status === 'ready' && (
+                      <input
+                        type="checkbox"
+                        checked={compareDocumentIds.includes(doc.id)}
+                        onChange={() => toggleCompareDocument(doc.id)}
+                        aria-label={t('documents.selectForCompare', { filename: doc.filename })}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    )}
                     <div className="w-10 h-10 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center text-xl">
                       {doc.file_type === 'pdf' ? '📄' : doc.file_type === 'note' ? '📝' : '📃'}
                     </div>
@@ -551,7 +611,7 @@ export default function Documents() {
                     </span>
                     {doc.status === 'ready' && (
                       <button
-                        onClick={() => askAboutDocument(doc.filename)}
+                        onClick={() => askAboutDocument(doc)}
                         className="text-xs px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-100 hover:border-blue-200"
                       >
                         {t('documents.askDocument')}

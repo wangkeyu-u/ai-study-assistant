@@ -43,6 +43,8 @@ export default function ChatPage() {
   const [smartMode, setSmartMode] = useState(false);
   const [agentName, setAgentName] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [scopedDocumentIds, setScopedDocumentIds] = useState<string[]>([]);
+  const [scopeNames, setScopeNames] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -67,9 +69,18 @@ export default function ChatPage() {
 
   useEffect(() => {
     const suggestedQuestion = searchParams.get('q');
-    if (!suggestedQuestion) return;
-    setInput(suggestedQuestion);
-    inputRef.current?.focus();
+    const documentIds = (searchParams.get('documents') || '').split(',').filter(Boolean);
+    const documentNames = (searchParams.get('names') || '').split('|').filter(Boolean);
+    if (suggestedQuestion) {
+      setInput(suggestedQuestion);
+      inputRef.current?.focus();
+    }
+    if (documentIds.length > 0) {
+      setScopedDocumentIds(documentIds);
+      setScopeNames(documentNames);
+      setSmartMode(false);
+    }
+    if (!suggestedQuestion && documentIds.length === 0) return;
     setSearchParams({}, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -138,14 +149,21 @@ export default function ChatPage() {
         onSessionId: (id: string) => setCurrentSessionId(id),
         onDebug: (debug: DebugInfo) => setDebugInfo(debug),
       };
-      const result = smartMode
-        ? await sendMultiAgentChat(
-            message,
-            currentSessionId || undefined,
-            chatCollectionId,
-            handlers
-          )
-        : await sendChatMessage(message, currentSessionId || undefined, chatCollectionId, handlers);
+      const result =
+        smartMode && scopedDocumentIds.length === 0
+          ? await sendMultiAgentChat(
+              message,
+              currentSessionId || undefined,
+              chatCollectionId,
+              handlers
+            )
+          : await sendChatMessage(
+              message,
+              currentSessionId || undefined,
+              chatCollectionId,
+              handlers,
+              scopedDocumentIds
+            );
 
       setStreamingText('');
       if (result.content) {
@@ -292,6 +310,25 @@ export default function ChatPage() {
 
       {/* Chat area */}
       <div className="chat-stage flex-1 flex flex-col relative">
+        {scopedDocumentIds.length > 0 && (
+          <div className="flex items-center gap-3 border-b border-indigo-100 bg-indigo-50/80 px-5 py-2.5 text-xs text-indigo-800">
+            <span className="font-semibold">
+              {scopedDocumentIds.length > 1 ? t('chat.compareScope') : t('chat.documentScope')}
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              {scopeNames.length > 0 ? scopeNames.join(' · ') : t('chat.selectedDocuments')}
+            </span>
+            <button
+              onClick={() => {
+                setScopedDocumentIds([]);
+                setScopeNames([]);
+              }}
+              className="rounded-md px-2 py-1 text-indigo-600 hover:bg-indigo-100"
+            >
+              {t('chat.clearScope')}
+            </button>
+          </div>
+        )}
         {/* Messages */}
         <div className="chat-scroll flex-1 overflow-auto p-6 space-y-5">
           {messages.length === 0 && !streamingText && (
@@ -376,6 +413,22 @@ export default function ChatPage() {
                                 : ''} · {t('chat.chunk', { index: c.chunk_index })}
                             </p>
                             <p>{c.text_preview}</p>
+                            {c.doc_id && (
+                              <button
+                                onClick={() =>
+                                  window.open(
+                                    `/api/documents/${encodeURIComponent(c.doc_id)}/file${
+                                      c.page_num ? `#page=${c.page_num}` : ''
+                                    }`,
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                  )
+                                }
+                                className="mt-2 font-medium text-blue-600 hover:text-blue-700 hover:underline"
+                              >
+                                {t('chat.openSource')}
+                              </button>
+                            )}
                           </div>
                         )
                     )}

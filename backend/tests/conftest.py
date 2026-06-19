@@ -76,6 +76,7 @@ def mock_rag_pipeline(mock_embedder, mock_generator, mock_vector_store):
             CitationMark(
                 ref_index=1,
                 chunk_id="chunk-1",
+                doc_id="doc-1",
                 doc_name="test.pdf",
                 page_num=1,
                 chunk_index=0,

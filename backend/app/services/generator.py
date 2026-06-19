@@ -26,6 +26,7 @@ class CitationMark:
     page_num: int | None
     chunk_index: int
     text_preview: str
+    doc_id: str = ""
 
 
 @dataclass
@@ -215,6 +216,7 @@ class Generator:
             "type": "citations",
             "citations": [
                 {
+                    "doc_id": c.doc_id,
                     "doc_name": c.doc_name,
                     "page_num": c.page_num,
                     "chunk_id": c.chunk_id,
@@ -252,6 +254,7 @@ class Generator:
                     CitationMark(
                         ref_index=ref_idx,
                         chunk_id=chunk.chunk_id,
+                        doc_id=getattr(chunk, "doc_id", ""),
                         doc_name=chunk.doc_name,
                         page_num=chunk.page_num,
                         chunk_index=chunk.chunk_index,

@@ -272,6 +272,7 @@ class RAGPipeline:
         question: str,
         history: list[dict] | None = None,
         collection_id: str | None = None,
+        document_ids: list[str] | None = None,
     ) -> tuple[GenerationResult, DebugInfo]:
         """Full query pipeline: rewrite → embed → retrieve → generate.
 
@@ -286,7 +287,8 @@ class RAGPipeline:
             question: User's raw question text.
             history: Conversation history as [{"role": "user"/"assistant", "content": "..."}].
                      Used for both query rewriting and multi-turn prompt context.
-            collection_id: Optional collection ID to restrict search to a specific knowledge base.
+            collection_id: Optional collection ID to restrict search to a knowledge base.
+            document_ids: Optional document IDs to restrict retrieval for focused Q&A or comparison.
 
         Returns:
             Tuple of (GenerationResult with answer + citations, DebugInfo for Debug Panel).
@@ -337,10 +339,15 @@ class RAGPipeline:
                 retriever,
                 rewritten_query,
                 collection_id=collection_id,
+                document_ids=document_ids,
                 max_subqueries=settings.query_decomposition_max_subqueries,
             )
         else:
-            retrieval_result = retriever.retrieve(rewritten_query, collection_id=collection_id)
+            retrieval_result = retriever.retrieve(
+                rewritten_query,
+                collection_id=collection_id,
+                document_ids=document_ids,
+            )
 
         # If no chunks pass the threshold, generator will return a
         # "资料不足" message instead of hallucinating an answer.

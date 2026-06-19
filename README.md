@@ -16,6 +16,8 @@ It is designed as more than a chat-with-docs demo: the project includes hybrid r
 - **Citation safety**: generated answers are checked with sentence-level citation validation; uncited or out-of-range factual claims are replaced with a safe refusal.
 - **Measurable quality gates**: isolated retrieval eval, hard-negative eval, multi-hop recall eval, and answer/citation quality eval are built into the repo.
 - **Learning workflow**: upload documents, ask cited questions, generate quizzes, review mistakes, export Anki cards, and explore a concept graph.
+- **Scoped document analysis**: ask questions against one exact source or compare up to five documents with retrieval coverage across every selected file.
+- **Traceable evidence**: expand any citation to preview its supporting chunk and open the original PDF, Markdown file, or note directly.
 - **Local-first storage**: documents, SQLite metadata, and ChromaDB indexes live on the user's machine.
 - **Debuggability**: the Debug Panel exposes rewritten queries, retrieval subqueries, retrieved chunks, retrieval sources, token usage, and latency.
 - **Interview demo mode**: load a built-in RAG system document in one click, then demonstrate grounded answers, multi-hop synthesis, and safe refusal with curated questions.
@@ -53,7 +55,7 @@ flowchart LR
 | Area | Capabilities |
 |---|---|
 | Document management | PDF/TXT/MD upload, note creation, tags, AI summaries, knowledge-base collections |
-| RAG chat | cited answers, multi-turn query rewriting, multi-hop retrieval, source previews, chat history search |
+| RAG chat | cited answers, exact-document Q&A, multi-document comparison, multi-turn query rewriting, multi-hop retrieval, source previews, original-source links, chat history search |
 | Retrieval quality | vector + FTS5 hybrid search, RRF ranking, hard-negative evaluation, confidence gating |
 | Citation safety | explicit citation extraction, sentence-level citation completeness checks, safe refusal fallback |
 | Quiz workflow | LLM-generated quizzes, online answering, mistake records, spaced review, Anki export |

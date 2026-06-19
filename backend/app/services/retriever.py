@@ -80,6 +80,26 @@ class RetrievedChunk:
     retrieval_sources: list[str] = field(default_factory=list)
 
 
+def ensure_document_coverage(
+    chunks: list[RetrievedChunk],
+    document_ids: list[str],
+    top_k: int,
+) -> list[RetrievedChunk]:
+    """Keep the best available chunk from each selected document before filling Top-K."""
+    if len(document_ids) < 2 or not chunks:
+        return chunks[:top_k]
+    wanted = set(document_ids)
+    coverage_ids: set[str] = set()
+    covered_documents: set[str] = set()
+    for chunk in chunks:
+        if chunk.doc_id in wanted and chunk.doc_id not in covered_documents:
+            coverage_ids.add(chunk.chunk_id)
+            covered_documents.add(chunk.doc_id)
+    prioritized = [chunk for chunk in chunks if chunk.chunk_id in coverage_ids]
+    remainder = [chunk for chunk in chunks if chunk.chunk_id not in coverage_ids]
+    return (prioritized + remainder)[:top_k]
+
+
 def build_fts_query(query: str, max_terms: int = 32) -> str | None:
     """Build a safe trigram FTS5 OR query from mixed Chinese/English text."""
     terms: list[str] = []
@@ -193,13 +213,30 @@ class Retriever:
         self.reranker = reranker
         self.rerank_top_n = max(rerank_top_n, top_k)
 
-    def retrieve(self, query: str, collection_id: str | None = None) -> RetrievalResult:
-        """Retrieve chunks for a query, optionally restricted to a collection."""
+    def retrieve(
+        self,
+        query: str,
+        collection_id: str | None = None,
+        document_ids: list[str] | None = None,
+    ) -> RetrievalResult:
+        """Retrieve chunks, optionally restricted to a collection and documents."""
         start = time.time()
         candidate_k = max(self.top_k * self.candidate_multiplier, self.top_k)
         query_embedding = self.embedder.embed_query(query)
 
-        where_filter = {"collection_id": collection_id} if collection_id else None
+        unique_document_ids = list(dict.fromkeys(document_ids or []))
+        vector_filters: list[dict] = []
+        if collection_id:
+            vector_filters.append({"collection_id": collection_id})
+        if unique_document_ids:
+            vector_filters.append({"doc_id": {"$in": unique_document_ids}})
+        where_filter = (
+            vector_filters[0]
+            if len(vector_filters) == 1
+            else {"$and": vector_filters}
+            if vector_filters
+            else None
+        )
         vector_results = self.vector_store.search(
             query_embedding=query_embedding,
             top_k=candidate_k,
@@ -226,7 +263,7 @@ class Retriever:
             )
 
         lexical_chunks = (
-            self._lexical_search(query, candidate_k, collection_id)
+            self._lexical_search(query, candidate_k, collection_id, unique_document_ids)
             if self.hybrid_search_enabled
             else []
         )
@@ -235,7 +272,7 @@ class Retriever:
             chunks = self._fuse(vector_chunks, lexical_chunks)
             mode = "hybrid"
         else:
-            chunks = vector_chunks[: self.top_k]
+            chunks = vector_chunks
             mode = "vector"
 
         self._apply_quality_penalty(chunks)
@@ -245,7 +282,7 @@ class Retriever:
         if self.reranker and chunks:
             chunks = self.reranker.rerank(query, chunks[: self.rerank_top_n])
             mode = f"{mode}_rerank"
-        chunks = chunks[: self.top_k]
+        chunks = ensure_document_coverage(chunks, unique_document_ids, self.top_k)
 
         confidence_rejected = False
         confidence_score = max(
@@ -293,21 +330,30 @@ class Retriever:
         query: str,
         limit: int,
         collection_id: str | None,
+        document_ids: list[str],
     ) -> list[RetrievedChunk]:
         fts_query = build_fts_query(query)
         short_terms = extract_short_terms(query)
         if not fts_query and not short_terms:
             return []
 
-        collection_clause = " AND d.collection_id = ?" if collection_id else ""
+        scope_clauses: list[str] = []
+        scope_params: list[str] = []
+        if collection_id:
+            scope_clauses.append("d.collection_id = ?")
+            scope_params.append(collection_id)
+        if document_ids:
+            placeholders = ",".join("?" for _ in document_ids)
+            scope_clauses.append(f"d.id IN ({placeholders})")
+            scope_params.extend(document_ids)
+        scope_clause = f" AND {' AND '.join(scope_clauses)}" if scope_clauses else ""
         rows_by_id: dict[str, tuple[sqlite3.Row, float, list[str]]] = {}
 
         try:
             with get_db() as conn:
                 if fts_query:
                     params: list[str | int] = [fts_query]
-                    if collection_id:
-                        params.append(collection_id)
+                    params.extend(scope_params)
                     params.append(limit)
                     rows = conn.execute(
                         f"""SELECT c.id, c.doc_id, c.text, c.page_num, c.heading,
@@ -317,7 +363,7 @@ class Retriever:
                             JOIN chunks c ON c.rowid = chunks_fts.rowid
                             JOIN documents d ON d.id = c.doc_id
                             WHERE chunks_fts MATCH ? AND d.status = 'ready'
-                                  {collection_clause}
+                                  {scope_clause}
                             ORDER BY bm25_score
                             LIMIT ?""",
                         params,
@@ -331,8 +377,7 @@ class Retriever:
                     alternatives = "|".join(re.escape(term) for term in short_terms)
                     exact_pattern = rf"(?<![A-Za-z0-9_])(?:{alternatives})(?![A-Za-z0-9_])"
                     exact_params: list[str | int] = [exact_pattern]
-                    if collection_id:
-                        exact_params.append(collection_id)
+                    exact_params.extend(scope_params)
                     exact_params.append(limit)
                     exact_rows = conn.execute(
                         f"""SELECT c.id, c.doc_id, c.text, c.page_num, c.heading,
@@ -341,7 +386,7 @@ class Retriever:
                             JOIN documents d ON d.id = c.doc_id
                             WHERE (COALESCE(c.heading, '') || CHAR(10) || c.text) REGEXP ?
                                   AND d.status = 'ready'
-                                  {collection_clause}
+                                  {scope_clause}
                             ORDER BY c.chunk_index
                             LIMIT ?""",
                         exact_params,

@@ -73,6 +73,7 @@ export interface ChatSession {
 }
 
 export interface Citation {
+  doc_id: string;
   doc_name: string;
   page_num?: number | null;
   chunk_id: string;
@@ -344,12 +345,18 @@ export async function sendChatMessage(
   message: string,
   sessionId?: string,
   collectionId?: string | null,
-  handlers?: ChatStreamHandlers
+  handlers?: ChatStreamHandlers,
+  documentIds?: string[]
 ): Promise<ChatStreamResult> {
   const res = await fetch(`${BASE_URL}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, message, collection_id: collectionId }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      message,
+      collection_id: collectionId,
+      document_ids: documentIds || [],
+    }),
   });
   return consumeChatStream(res, handlers);
 }

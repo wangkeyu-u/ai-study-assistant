@@ -70,6 +70,7 @@ def build_citations_payload(citations: list) -> list[dict]:
         if isinstance(c, dict):
             payload.append(
                 {
+                    "doc_id": c.get("doc_id", ""),
                     "doc_name": c.get("doc_name", ""),
                     "page_num": c.get("page_num"),
                     "chunk_id": c.get("chunk_id", ""),
@@ -80,6 +81,7 @@ def build_citations_payload(citations: list) -> list[dict]:
         else:
             payload.append(
                 {
+                    "doc_id": c.doc_id,
                     "doc_name": c.doc_name,
                     "page_num": c.page_num,
                     "chunk_id": c.chunk_id,

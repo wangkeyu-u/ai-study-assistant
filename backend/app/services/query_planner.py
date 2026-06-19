@@ -9,6 +9,7 @@ from app.services.retriever import (
     RetrievalResult,
     RetrievedChunk,
     Retriever,
+    ensure_document_coverage,
     reciprocal_rank_fusion,
 )
 
@@ -99,6 +100,7 @@ def merge_retrieval_results(
     *,
     top_k: int,
     rrf_k: int = 60,
+    document_ids: list[str] | None = None,
 ) -> RetrievalResult:
     """Merge ranked retrieval results with RRF while preserving chunk metadata."""
     if not results:
@@ -141,7 +143,8 @@ def merge_retrieval_results(
             -first_seen[chunk.chunk_id][1],
         ),
         reverse=True,
-    )[:top_k]
+    )
+    chunks = ensure_document_coverage(chunks, document_ids or [], top_k)
 
     confidence_scores = [result.confidence_score for result in results if result.confidence_score]
     modes = {result.mode for result in results}
@@ -167,12 +170,17 @@ def retrieve_with_query_plan(
     query: str,
     *,
     collection_id: str | None = None,
+    document_ids: list[str] | None = None,
     max_subqueries: int = 3,
 ) -> tuple[RetrievalResult, list[str]]:
     """Run original + decomposed queries and return one fused retrieval result."""
     retrieval_queries = build_retrieval_queries(query, max_subqueries=max_subqueries)
     results = [
-        retriever.retrieve(retrieval_query, collection_id=collection_id)
+        retriever.retrieve(
+            retrieval_query,
+            collection_id=collection_id,
+            document_ids=document_ids,
+        )
         for retrieval_query in retrieval_queries
     ]
     if len(results) == 1:
@@ -183,6 +191,7 @@ def retrieve_with_query_plan(
             results,
             top_k=retriever.top_k,
             rrf_k=retriever.rrf_k,
+            document_ids=document_ids,
         ),
         retrieval_queries,
     )
