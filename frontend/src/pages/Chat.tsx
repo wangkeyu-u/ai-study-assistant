@@ -18,6 +18,7 @@ import {
   sendMultiAgentChat,
 } from '../api';
 import DebugPanel from '../components/DebugPanel';
+import Icon from '../components/Icon';
 
 interface MessageWithCitations extends ChatMessage {
   citations: Citation[];
@@ -41,10 +42,10 @@ export default function ChatPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<HistorySearchResult[]>([]);
   const [smartMode, setSmartMode] = useState(false);
-  const [agentName, setAgentName] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [scopedDocumentIds, setScopedDocumentIds] = useState<string[]>([]);
   const [scopeNames, setScopeNames] = useState<string[]>([]);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -71,6 +72,7 @@ export default function ChatPage() {
     const suggestedQuestion = searchParams.get('q');
     const documentIds = (searchParams.get('documents') || '').split(',').filter(Boolean);
     const documentNames = (searchParams.get('names') || '').split('|').filter(Boolean);
+    const requestedSessionId = searchParams.get('session');
     if (suggestedQuestion) {
       setInput(suggestedQuestion);
       inputRef.current?.focus();
@@ -80,7 +82,13 @@ export default function ChatPage() {
       setScopeNames(documentNames);
       setSmartMode(false);
     }
-    if (!suggestedQuestion && documentIds.length === 0) return;
+    if (requestedSessionId) {
+      setCurrentSessionId(requestedSessionId);
+      getSessionMessages(requestedSessionId)
+        .then(setMessages)
+        .catch(() => setMessages([]));
+    }
+    if (!suggestedQuestion && documentIds.length === 0 && !requestedSessionId) return;
     setSearchParams({}, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -103,7 +111,6 @@ export default function ChatPage() {
     setMessages([]);
     setStreamingText('');
     setDebugInfo(null);
-    setAgentName('');
     setErrorMessage(null);
     inputRef.current?.focus();
   };
@@ -129,7 +136,6 @@ export default function ChatPage() {
     setSending(true);
     setStreamingText('');
     setDebugInfo(null);
-    setAgentName('');
     setErrorMessage(null);
 
     const previousSessionId = currentSessionId;
@@ -177,7 +183,6 @@ export default function ChatPage() {
         };
         setMessages((prev) => [...prev, assistantMsg]);
       }
-      setAgentName(result.agentName || '');
 
       await fetchSessions();
     } catch (error: unknown) {
@@ -212,16 +217,28 @@ export default function ChatPage() {
     return 'bg-slate-100 text-slate-700 border-slate-200';
   };
 
+  const copyAnswer = async (message: MessageWithCitations) => {
+    await navigator.clipboard.writeText(message.content);
+    setCopiedMessageId(message.id);
+    window.setTimeout(() => setCopiedMessageId(null), 1600);
+  };
+
   return (
     <div className="spell-page chat-workspace h-full flex">
       {/* Session sidebar */}
-      <div className="chat-rail w-64 border-r border-gray-200 flex flex-col">
+      <aside className="chat-rail conversation-rail w-60 border-r border-zinc-200 flex flex-col">
+        <div className="flex items-center justify-between px-4 pb-2 pt-4">
+          <span className="text-xs font-semibold text-zinc-700">{t('chat.conversations')}</span>
+          <button onClick={handleNewChat} className="icon-action" aria-label={t('chat.newChat')}>
+            <Icon name="plus" size={16} />
+          </button>
+        </div>
         {/* Collection filter for search scope */}
         <div className="p-3 border-b border-gray-200">
           <select
             value={chatCollectionId || ''}
             onChange={(e) => setChatCollectionId(e.target.value || null)}
-            className="w-full text-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="quiet-select w-full"
           >
             <option value="">{t('chat.allKnowledgeBases')}</option>
             {chatCollections.map((c) => (
@@ -231,23 +248,26 @@ export default function ChatPage() {
             ))}
           </select>
         </div>
-        <div className="p-3 border-b border-gray-200">
-          <input
-            type="text"
-            placeholder={t('chat.searchPlaceholder')}
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              if (e.target.value.length >= 2) {
-                searchHistory(e.target.value)
-                  .then(setSearchResults)
-                  .catch(() => {});
-              } else {
-                setSearchResults([]);
-              }
-            }}
-            className="w-full text-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          />
+        <div className="p-3 border-b border-zinc-200">
+          <label className="conversation-search">
+            <Icon name="search" size={15} />
+            <input
+              type="text"
+              aria-label={t('chat.searchPlaceholder')}
+              placeholder={t('chat.searchPlaceholder')}
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (e.target.value.length >= 2) {
+                  searchHistory(e.target.value)
+                    .then(setSearchResults)
+                    .catch(() => {});
+                } else {
+                  setSearchResults([]);
+                }
+              }}
+            />
+          </label>
           {searchResults.length > 0 && (
             <div className="mt-2 max-h-40 overflow-auto space-y-1">
               {searchResults.map((r) => (
@@ -266,14 +286,6 @@ export default function ChatPage() {
               ))}
             </div>
           )}
-        </div>
-        <div className="p-3 border-b border-gray-200">
-          <button
-            onClick={handleNewChat}
-            className="spell-button w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-500 text-white rounded-lg text-sm hover:from-blue-700 hover:to-indigo-600 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
-          >
-            {t('chat.newChat')}
-          </button>
         </div>
         <div className="flex-1 overflow-auto p-2 space-y-0.5">
           {sessions.length === 0 && (
@@ -299,14 +311,15 @@ export default function ChatPage() {
                   e.stopPropagation();
                   handleDeleteSession(s.id);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-xs text-red-400 hover:text-red-600 ml-1 transition-all duration-200 w-5 h-5 flex items-center justify-center rounded hover:bg-red-50"
+                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 ml-1 transition-all duration-200 w-6 h-6 flex items-center justify-center rounded hover:bg-red-50"
+                aria-label={t('common.delete')}
               >
-                x
+                <Icon name="trash" size={13} />
               </button>
             </div>
           ))}
         </div>
-      </div>
+      </aside>
 
       {/* Chat area */}
       <div className="chat-stage flex-1 flex flex-col relative">
@@ -330,17 +343,15 @@ export default function ChatPage() {
           </div>
         )}
         {/* Messages */}
-        <div className="chat-scroll flex-1 overflow-auto p-6 space-y-5">
+        <div className="chat-scroll flex-1 overflow-auto px-6 py-8 space-y-7">
           {messages.length === 0 && !streamingText && (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center max-w-sm">
-                <div className="knowledge-orbit" aria-hidden="true">
-                  <div className="knowledge-core">
-                    <span>AI</span>
-                  </div>
+              <div className="max-w-md text-center">
+                <div className="mx-auto mb-5 grid h-11 w-11 place-items-center rounded-xl border border-zinc-200 bg-white text-blue-600">
+                  <Icon name="sparkles" size={20} />
                 </div>
-                <p className="text-gray-600 font-medium mb-2">{t('chat.startChat')}</p>
-                <p className="text-sm text-gray-400 leading-relaxed">{t('chat.startChatHint')}</p>
+                <p className="mb-2 font-semibold text-zinc-800">{t('chat.startChat')}</p>
+                <p className="text-sm leading-relaxed text-zinc-500">{t('chat.startChatHint')}</p>
                 <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">
                   <span className="px-2 py-1 bg-gray-100 rounded-full">
                     {t('chat.enterToSend')}
@@ -356,15 +367,23 @@ export default function ChatPage() {
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`message-enter flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`message-enter mx-auto flex w-full max-w-4xl ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[75%] ${
+                className={`${
                   msg.role === 'user'
-                    ? 'message-bubble message-bubble-user bg-gradient-to-br from-blue-600 to-indigo-500 text-white rounded-2xl rounded-tr-md px-5 py-3.5 shadow-md'
-                    : 'message-bubble message-bubble-assistant bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-3.5 shadow-sm'
+                    ? 'user-question max-w-[72%] rounded-xl bg-zinc-900 px-4 py-3 text-white'
+                    : 'answer-surface w-full'
                 }`}
               >
+                {msg.role === 'assistant' && (
+                  <div className="answer-heading">
+                    <span>
+                      <Icon name="sparkles" size={14} />
+                    </span>
+                    {t('chat.answer')}
+                  </div>
+                )}
                 {/* Agent badge */}
                 {msg.role === 'assistant' && msg.agentName && (
                   <div className="mb-2">
@@ -377,12 +396,20 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                <article
+                  className={
+                    msg.role === 'assistant'
+                      ? 'answer-content'
+                      : 'text-sm leading-relaxed whitespace-pre-wrap'
+                  }
+                >
+                  {msg.content}
+                </article>
 
                 {/* Citations */}
                 {msg.role === 'assistant' && msg.citations.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-2">{t('chat.citations')}</p>
+                  <div className="answer-sources">
+                    <p>{t('chat.citations')}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {msg.citations.map((c, i) => (
                         <button
@@ -436,12 +463,16 @@ export default function ChatPage() {
                 )}
 
                 {msg.role === 'assistant' && (
-                  <div className="mt-2 flex justify-end">
+                  <div className="answer-actions">
+                    <button onClick={() => copyAnswer(msg)} title={t('chat.copyAnswer')}>
+                      <Icon name={copiedMessageId === msg.id ? 'check' : 'copy'} size={14} />
+                      {copiedMessageId === msg.id ? t('chat.copied') : t('chat.copyAnswer')}
+                    </button>
                     <button
                       onClick={() => exportMessageAsMarkdown(msg.id)}
-                      className="text-xs text-gray-400 hover:text-blue-600 transition-colors"
                       title={t('chat.exportMDTitle')}
                     >
+                      <Icon name="external" size={14} />
                       {t('chat.exportMD')}
                     </button>
                   </div>
@@ -452,8 +483,14 @@ export default function ChatPage() {
 
           {/* Streaming text with typing indicator */}
           {sending && !streamingText && (
-            <div className="message-enter flex justify-start">
-              <div className="message-bubble message-bubble-assistant bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-4 shadow-sm">
+            <div className="message-enter mx-auto flex w-full max-w-4xl justify-start">
+              <div className="answer-surface w-full">
+                <div className="answer-heading">
+                  <span>
+                    <Icon name="sparkles" size={14} />
+                  </span>
+                  {t('chat.answer')}
+                </div>
                 <div className="thinking-orbit" aria-label={t('common.loading')}>
                   <span />
                   <span />
@@ -464,9 +501,15 @@ export default function ChatPage() {
           )}
 
           {streamingText && (
-            <div className="message-enter flex justify-start">
-              <div className="message-bubble message-bubble-assistant max-w-[75%] bg-white border border-gray-100 rounded-2xl rounded-tl-md px-5 py-3.5 shadow-sm">
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            <div className="message-enter mx-auto flex w-full max-w-4xl justify-start">
+              <div className="answer-surface w-full">
+                <div className="answer-heading">
+                  <span>
+                    <Icon name="sparkles" size={14} />
+                  </span>
+                  {t('chat.answer')}
+                </div>
+                <p className="answer-content">
                   {streamingText}
                   {sending && (
                     <span className="typing-cursor inline-block w-0.5 h-4 bg-blue-500 ml-0.5 align-middle animate-pulse"></span>
@@ -480,92 +523,70 @@ export default function ChatPage() {
         </div>
 
         {/* Input area */}
-        <div className="composer-dock p-4 border-t border-gray-200 bg-white">
-          {/* Error banner */}
-          {errorMessage && (
-            <div className="mb-3 flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-              <span className="flex-1">{errorMessage}</span>
-              <button
-                onClick={() => setErrorMessage(null)}
-                className="text-red-400 hover:text-red-600 transition-colors px-1"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* Smart Mode Toggle */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={() => setSmartMode(!smartMode)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ${
-                  smartMode ? 'bg-gradient-to-r from-indigo-500 to-purple-500' : 'bg-gray-200'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-all duration-300 ${
-                    smartMode ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-              <span
-                className={`text-xs font-medium transition-colors duration-200 ${smartMode ? 'text-indigo-600' : 'text-gray-400'}`}
-              >
-                {t('chat.smartMode')}
-              </span>
-              {smartMode && (
-                <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-full border border-indigo-100">
-                  Multi-Agent
-                </span>
-              )}
-            </div>
-            {agentName && smartMode && (
-              <span
-                className={`text-xs px-2.5 py-1 rounded-full border ${getAgentBadgeColor(agentName)}`}
-              >
-                {t('chat.lastResponse')}: {agentName}
-              </span>
+        <div className="composer-dock border-t border-zinc-200 bg-white px-5 py-4">
+          <div className="mx-auto max-w-4xl">
+            {/* Error banner */}
+            {errorMessage && (
+              <div className="mb-3 flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                <span className="flex-1">{errorMessage}</span>
+                <button
+                  onClick={() => setErrorMessage(null)}
+                  className="text-red-400 hover:text-red-600 transition-colors px-1"
+                >
+                  ✕
+                </button>
+              </div>
             )}
-          </div>
 
-          <div className="composer-shell flex gap-2 items-end">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={smartMode ? t('chat.smartModePlaceholder') : t('chat.inputPlaceholder')}
-              rows={1}
-              className={`spell-input flex-1 px-4 py-3 border-0 rounded-xl text-sm resize-none focus:outline-none focus:ring-0 transition-all duration-200 ${
-                smartMode
-                  ? 'border-indigo-200 focus:ring-indigo-400 bg-indigo-50/30'
-                  : 'border-gray-200 focus:ring-blue-500 bg-white'
-              }`}
-              style={{ minHeight: '44px', maxHeight: '120px' }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={sending || !input.trim()}
-              className={`spell-button px-5 py-3 text-white rounded-xl text-sm disabled:opacity-50 transition-all duration-200 whitespace-nowrap shadow-sm hover:shadow-md font-medium ${
-                smartMode
-                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
-                  : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600'
-              }`}
-            >
-              {sending ? t('common.sending') : t('common.send')}
-            </button>
-            <button
-              onClick={() => setShowDebug(!showDebug)}
-              className={`px-3 py-3 rounded-xl text-sm transition-all duration-200 whitespace-nowrap ${
-                showDebug
-                  ? 'bg-orange-100 text-orange-700 border border-orange-200'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'
-              }`}
-              title="RAG Debug Panel"
-            >
-              Debug
-            </button>
+            <div className="composer-shell flex gap-2 items-end">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  smartMode ? t('chat.smartModePlaceholder') : t('chat.inputPlaceholder')
+                }
+                rows={1}
+                className="composer-textarea flex-1 resize-none px-4 py-3 text-sm outline-none"
+                style={{ minHeight: '44px', maxHeight: '120px' }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={sending || !input.trim()}
+                className="composer-send"
+              >
+                {sending ? t('common.sending') : t('common.send')}
+              </button>
+              <details className="context-menu composer-settings">
+                <summary aria-label={t('chat.answerSettings')}>
+                  <Icon name="sliders" size={17} />
+                </summary>
+                <div className="composer-settings-popover">
+                  <div>
+                    <span>
+                      <strong>{t('chat.deepAnswer')}</strong>
+                      <small>{t('chat.deepAnswerHint')}</small>
+                    </span>
+                    <button
+                      onClick={() => setSmartMode(!smartMode)}
+                      className={`compact-switch ${smartMode ? 'is-on' : ''}`}
+                      aria-pressed={smartMode}
+                    >
+                      <span />
+                    </button>
+                  </div>
+                  <button className="debug-option" onClick={() => setShowDebug(!showDebug)}>
+                    <Icon name="database" size={15} />
+                    {showDebug ? t('chat.hideDebug') : t('chat.showDebug')}
+                  </button>
+                </div>
+              </details>
+            </div>
+            <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-zinc-400">
+              <span>{smartMode ? t('chat.deepAnswerActive') : t('chat.groundedAnswer')}</span>
+              <span>{t('chat.enterToSend')}</span>
+            </div>
           </div>
         </div>
       </div>

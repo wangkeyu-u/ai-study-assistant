@@ -74,4 +74,17 @@ describe('Documents Page', () => {
 
     expect(screen.getByRole('button', { name: /Compare documents|开始对比/ })).toBeEnabled();
   });
+
+  it('shows a recovery state instead of an empty library when loading fails', async () => {
+    server.use(http.get('/api/documents', () => new HttpResponse(null, { status: 503 })));
+
+    renderDocuments();
+
+    expect(
+      await screen.findByText(/library is temporarily unavailable|暂时无法连接资料库/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/No documents uploaded yet|还没有上传任何文档/)
+    ).not.toBeInTheDocument();
+  });
 });

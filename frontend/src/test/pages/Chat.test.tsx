@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { http, HttpResponse } from 'msw';
 import Chat from '../../pages/Chat';
+import { server } from '../mocks/server';
 
 const renderChat = (initialPath = '/chat') =>
   render(
@@ -39,5 +41,25 @@ describe('Chat Page', () => {
       expect(screen.getByText(/Comparison scope|多文档对比范围/)).toBeInTheDocument();
       expect(screen.getByText('a.pdf · b.pdf')).toBeInTheDocument();
     });
+  });
+
+  it('restores a conversation requested from the home page', async () => {
+    server.use(
+      http.get('/api/chat/sessions/session-1/messages', () =>
+        HttpResponse.json([
+          {
+            id: 'message-1',
+            role: 'assistant',
+            content: 'Restored grounded answer',
+            citations: [],
+            created_at: '2026-01-01',
+          },
+        ])
+      )
+    );
+
+    renderChat('/chat?session=session-1');
+
+    expect(await screen.findByText('Restored grounded answer')).toBeInTheDocument();
   });
 });

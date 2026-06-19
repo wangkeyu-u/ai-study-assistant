@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import Icon from '../components/Icon';
 import {
   Document,
   Collection,
@@ -342,16 +343,34 @@ export default function Documents() {
   return (
     <div className="spell-page h-full flex flex-col">
       {/* Header */}
-      <div className="page-header p-6 border-b border-gray-200 bg-white">
-        <h2 className="text-xl font-semibold text-gray-800">{t('documents.title')}</h2>
-        <p className="text-sm text-gray-500 mt-1">{t('documents.subtitle')}</p>
+      <div className="page-header library-header border-b border-zinc-200 bg-white px-7 py-5">
+        <div className="flex items-center justify-between gap-5">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-900">
+              {t('documents.title')}
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500">{t('documents.subtitle')}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowNoteModal(true)} className="secondary-action">
+              <Icon name="note" size={16} /> {t('documents.newNote')}
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="primary-action"
+            >
+              <Icon name="upload" size={16} />
+              {uploading ? t('common.uploading') : t('documents.selectFile')}
+            </button>
+          </div>
+        </div>
 
-        {/* Collection selector + Backup buttons */}
-        <div className="flex items-center gap-2 mt-3">
+        <div className="mt-4 flex items-center gap-2">
           <select
             value={selectedCollection || ''}
             onChange={(e) => setSelectedCollection(e.target.value || null)}
-            className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="quiet-select"
           >
             <option value="">{t('documents.allDocuments')}</option>
             {collections.map((c) => (
@@ -360,10 +379,7 @@ export default function Documents() {
               </option>
             ))}
           </select>
-          <button
-            onClick={() => setShowNewCollectionModal(true)}
-            className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-          >
+          <button onClick={() => setShowNewCollectionModal(true)} className="quiet-button">
             {t('documents.newCollection')}
           </button>
           {selectedCollection && (
@@ -375,21 +391,24 @@ export default function Documents() {
             </button>
           )}
           <div className="flex-1" />
-          <button
-            onClick={handleExportBackup}
-            disabled={backupLoading}
-            className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50 border border-green-100"
-            title={t('documents.backupDataTitle')}
-          >
-            {backupLoading ? t('common.exporting') : t('documents.backupData')}
-          </button>
-          <button
-            onClick={() => backupInputRef.current?.click()}
-            className="text-xs px-3 py-1.5 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors border border-yellow-100"
-            title={t('documents.importBackupTitle')}
-          >
-            {t('documents.importBackup')}
-          </button>
+          <details className="context-menu">
+            <summary aria-label={t('documents.moreActions')}>
+              <Icon name="more" size={18} />
+            </summary>
+            <div className="context-menu-popover">
+              <button onClick={handleLoadDemo} disabled={demoLoading}>
+                <Icon name="sparkles" size={15} />
+                {demoLoading ? t('documents.loadingDemo') : t('documents.loadDemo')}
+              </button>
+              <button onClick={handleExportBackup} disabled={backupLoading}>
+                <Icon name="database" size={15} />
+                {backupLoading ? t('common.exporting') : t('documents.backupData')}
+              </button>
+              <button onClick={() => backupInputRef.current?.click()}>
+                <Icon name="upload" size={15} /> {t('documents.importBackup')}
+              </button>
+            </div>
+          </details>
           <input
             ref={backupInputRef}
             type="file"
@@ -400,52 +419,6 @@ export default function Documents() {
             }}
             className="hidden"
           />
-        </div>
-      </div>
-
-      {/* Upload area */}
-      <div className="p-6 bg-white border-b border-gray-200">
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          className={`upload-spell border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-300 ${dragOver ? 'is-dragging' : ''} ${
-            dragOver
-              ? 'border-blue-400 bg-blue-50 scale-[1.01] shadow-lg shadow-blue-100'
-              : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50/50'
-          }`}
-        >
-          <div className={`transition-transform duration-300 ${dragOver ? 'scale-110' : ''}`}>
-            <div className="w-12 h-12 mx-auto mb-3 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center">
-              <span className="text-2xl">{dragOver ? '📂' : '📁'}</span>
-            </div>
-          </div>
-          <p className="text-gray-600 mb-1 font-medium">
-            {dragOver ? t('documents.dropHint') : t('documents.dragHint')}
-          </p>
-          <p className="text-xs text-gray-400 mb-4">{t('documents.formatHint')}</p>
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="spell-button px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-500 text-white rounded-lg text-sm hover:from-blue-700 hover:to-indigo-600 disabled:opacity-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
-            >
-              {uploading ? t('common.uploading') : t('documents.selectFile')}
-            </button>
-            <button
-              onClick={() => setShowNoteModal(true)}
-              className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors border border-gray-200 font-medium"
-            >
-              {t('documents.newNote')}
-            </button>
-            <button
-              onClick={handleLoadDemo}
-              disabled={demoLoading}
-              className="px-5 py-2.5 bg-amber-50 text-amber-800 rounded-lg text-sm hover:bg-amber-100 transition-colors border border-amber-200 font-medium disabled:opacity-50"
-            >
-              {demoLoading ? t('documents.loadingDemo') : t('documents.loadDemo')}
-            </button>
-          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -455,7 +428,25 @@ export default function Documents() {
             className="hidden"
           />
         </div>
-        {error && (
+      </div>
+
+      {/* Upload area */}
+      <div className="border-b border-zinc-200 bg-white px-7 py-3">
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className={`library-drop-row ${dragOver ? 'is-dragging' : ''} ${
+            dragOver ? 'border-blue-400 bg-blue-50' : 'border-zinc-200 hover:border-zinc-300'
+          }`}
+        >
+          <Icon name="upload" size={17} />
+          <p className="text-sm font-medium text-zinc-600">
+            {dragOver ? t('documents.dropHint') : t('documents.dragHint')}
+          </p>
+          <span className="ml-auto text-xs text-zinc-400">{t('documents.formatHint')}</span>
+        </div>
+        {error && docs.length > 0 && (
           <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
             <span className="text-red-400">⚠️</span>
             {error}
@@ -528,11 +519,27 @@ export default function Documents() {
               <p className="text-gray-400 text-sm">{t('common.loading')}</p>
             </div>
           </div>
+        ) : error && docs.length === 0 ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="max-w-sm text-center">
+              <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700">
+                <Icon name="offline" size={21} />
+              </div>
+              <p className="font-medium text-zinc-800">{t('documents.libraryUnavailable')}</p>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-500">{error}</p>
+              <button
+                onClick={() => fetchDocs(selectedCollection)}
+                className="secondary-action mt-5"
+              >
+                {t('common.refresh')}
+              </button>
+            </div>
+          </div>
         ) : docs.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <div className="text-center max-w-sm">
-              <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-gray-100 to-gray-50 rounded-2xl flex items-center justify-center">
-                <span className="text-3xl">📚</span>
+              <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-xl border border-zinc-200 bg-white text-zinc-500">
+                <Icon name="library" size={24} />
               </div>
               <p className="text-gray-600 font-medium mb-2">{t('documents.noDocuments')}</p>
               <p className="text-sm text-gray-400 leading-relaxed mb-4">
@@ -566,7 +573,7 @@ export default function Documents() {
             {docs.map((doc) => (
               <div
                 key={doc.id}
-                className="spell-card bg-white rounded-xl border border-gray-200 overflow-hidden transition-all duration-200 hover:shadow-md hover:border-gray-300"
+                className="library-document-card overflow-visible rounded-xl border border-zinc-200 bg-white"
               >
                 <div className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -579,8 +586,8 @@ export default function Documents() {
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     )}
-                    <div className="w-10 h-10 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center text-xl">
-                      {doc.file_type === 'pdf' ? '📄' : doc.file_type === 'note' ? '📝' : '📃'}
+                    <div className="grid h-10 w-10 place-items-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-600">
+                      <Icon name={doc.file_type === 'note' ? 'note' : 'file'} size={18} />
                     </div>
                     <div>
                       <p className="font-medium text-gray-800">{doc.filename}</p>
@@ -610,93 +617,99 @@ export default function Documents() {
                           : t('documents.status_processing')}
                     </span>
                     {doc.status === 'ready' && (
-                      <button
-                        onClick={() => askAboutDocument(doc)}
-                        className="text-xs px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-100 hover:border-blue-200"
-                      >
-                        {t('documents.askDocument')}
+                      <button onClick={() => askAboutDocument(doc)} className="document-ask-action">
+                        <Icon name="chat" size={14} /> {t('documents.askDocument')}
                       </button>
                     )}
-                    {doc.status === 'ready' && (
-                      <button
-                        onClick={() => handleGenerateSummary(doc.id)}
-                        disabled={generatingSummary === doc.id}
-                        className="text-xs px-3 py-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 border border-purple-100 hover:border-purple-200"
-                      >
-                        {generatingSummary === doc.id
-                          ? t('common.generating')
-                          : summaries[doc.id]
-                            ? t('documents.reSummarize')
-                            : t('documents.aiSummary')}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleViewChunks(doc.id)}
-                      className="text-xs px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
-                    >
-                      {selectedDoc === doc.id ? t('documents.collapse') : t('documents.viewChunks')}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(doc.id)}
-                      className="text-xs px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-100 hover:border-red-200"
-                    >
-                      {t('common.delete')}
-                    </button>
+                    <details className="context-menu document-menu">
+                      <summary aria-label={t('documents.moreActions')}>
+                        <Icon name="more" size={18} />
+                      </summary>
+                      <div className="context-menu-popover">
+                        {doc.status === 'ready' && (
+                          <button
+                            onClick={() => handleGenerateSummary(doc.id)}
+                            disabled={generatingSummary === doc.id}
+                          >
+                            <Icon name="sparkles" size={15} />
+                            {generatingSummary === doc.id
+                              ? t('common.generating')
+                              : summaries[doc.id]
+                                ? t('documents.reSummarize')
+                                : t('documents.aiSummary')}
+                          </button>
+                        )}
+                        <button onClick={() => handleViewChunks(doc.id)}>
+                          <Icon name="layers" size={15} />
+                          {selectedDoc === doc.id
+                            ? t('documents.collapse')
+                            : t('documents.viewChunks')}
+                        </button>
+                        <button className="danger" onClick={() => handleDelete(doc.id)}>
+                          <Icon name="trash" size={15} /> {t('common.delete')}
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 </div>
 
-                {/* Tags */}
-                <div className="px-4 pb-3 flex items-center gap-2 flex-wrap">
-                  {doc.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors ${getTagColor(tag)}`}
-                    >
-                      {tag}
-                      <button
-                        onClick={() => handleRemoveTag(doc.id, tag)}
-                        className="opacity-60 hover:opacity-100 transition-opacity"
+                <details className="document-metadata border-t border-zinc-100 px-4 py-2.5">
+                  <summary>
+                    {t('documents.organizeDocument')} <Icon name="chevron" size={14} />
+                  </summary>
+                  {/* Tags */}
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    {doc.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors ${getTagColor(tag)}`}
                       >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    placeholder={t('documents.addTag')}
-                    value={tagInput[doc.id] || ''}
-                    onChange={(e) => setTagInput({ ...tagInput, [doc.id]: e.target.value })}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddTag(doc.id)}
-                    className="text-xs px-2.5 py-1 border border-gray-200 rounded-full w-24 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
-                  />
-                </div>
-
-                {/* Collection assignment */}
-                <div className="px-4 pb-3 flex items-center gap-2">
-                  <span className="text-xs text-gray-400">{t('documents.collection')}</span>
-                  <select
-                    value={doc.collection_id || ''}
-                    onChange={(e) => handleAssignCollection(doc.id, e.target.value || null)}
-                    className="text-xs px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-white"
-                  >
-                    <option value="">{t('documents.ungrouped')}</option>
-                    {collections.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
+                        {tag}
+                        <button
+                          onClick={() => handleRemoveTag(doc.id, tag)}
+                          className="opacity-60 hover:opacity-100 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      </span>
                     ))}
-                  </select>
-                  {doc.collection_name && (
-                    <span className="text-xs text-gray-400">({doc.collection_name})</span>
-                  )}
-                </div>
+                    <input
+                      type="text"
+                      placeholder={t('documents.addTag')}
+                      value={tagInput[doc.id] || ''}
+                      onChange={(e) => setTagInput({ ...tagInput, [doc.id]: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddTag(doc.id)}
+                      className="text-xs px-2.5 py-1 border border-gray-200 rounded-full w-24 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
+                    />
+                  </div>
+
+                  {/* Collection assignment */}
+                  <div className="mt-3 flex items-center gap-2 pb-1">
+                    <span className="text-xs text-gray-400">{t('documents.collection')}</span>
+                    <select
+                      value={doc.collection_id || ''}
+                      onChange={(e) => handleAssignCollection(doc.id, e.target.value || null)}
+                      className="text-xs px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-white"
+                    >
+                      <option value="">{t('documents.ungrouped')}</option>
+                      {collections.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    {doc.collection_name && (
+                      <span className="text-xs text-gray-400">({doc.collection_name})</span>
+                    )}
+                  </div>
+                </details>
 
                 {/* Summary */}
                 {summaries[doc.id] && (
                   <div className="px-4 pb-3">
-                    <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-100">
-                      <p className="text-xs font-semibold text-purple-700 mb-2 flex items-center gap-1">
-                        <span>📋</span> {t('documents.aiSummaryTitle')}
+                    <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4">
+                      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-blue-700">
+                        <Icon name="sparkles" size={14} /> {t('documents.aiSummaryTitle')}
                       </p>
                       <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
                         {summaries[doc.id].summary}
