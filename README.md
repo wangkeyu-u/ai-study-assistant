@@ -1,3 +1,24 @@
+# AI Study Assistant — 本地优先 RAG 学习助手 / Local-First RAG Study Assistant
+
+> 把 PDF、Markdown、笔记变成可搜索、带引用、可测验的个人知识库 —— 混合检索、多跳推理、引用验证、知识图谱。
+>
+> Turns PDFs, Markdown, notes into a searchable, cited, quiz-ready personal knowledge base — hybrid retrieval, multi-hop reasoning, citation validation, knowledge graph.
+
+[![Python](https://img.shields.io/badge/Python-3.12-blue)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-RAG-009688)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-TypeScript-61DAFB)](https://react.dev/)
+[![Local First](https://img.shields.io/badge/Local--First-Privacy-success)]()
+
+---
+
+## 项目简介（中文）
+
+AI Study Assistant 是一个本地优先的 RAG 学习平台，把 PDF、Markdown、文本笔记和学习材料变成可搜索、带引用、可测验的个人知识库。它不只是"和文档聊天"的 Demo——项目包含混合检索（ChromaDB 向量 + SQLite FTS5 关键词 + RRF 融合）、多跳查询规划、引用安全验证（句级引用检查，未引用的声明会被安全拒绝）、学习工作流（测验、错题、Anki 导出）、知识图谱（D3 力导向可视化）和调试面板。
+
+支持 OpenAI、Gemini、DeepSeek、通义千问、Moonshot、Mistral、智谱 GLM、xAI Grok、OpenRouter、Ollama 等多种 LLM 提供商，可从设置页一键切换。隔离检索评估基线：MRR 1.000、Hit@1 1.000、无答案准确率 1.000。
+
+---
+
 # AI Study Assistant
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
