@@ -11,6 +11,7 @@ import logging
 from collections.abc import AsyncGenerator
 
 from app.services.agents.base import AgentResponse, BaseAgent
+from app.services.language import answer_language_instruction
 from app.services.rag import RAGPipeline
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ EXAMINER_SYSTEM_PROMPT = """你是一位出题专家（Examiner Agent）。根�
 - 混合选择题（choice）和判断题（true_false）
 - 选择题必须有恰好 4 个选项
 - 每道题必须有解析（explanation）
+- {language_instruction}
 - 严格使用以下 JSON 格式输出，不要附加额外文字：
 {{"questions": [{{"type": "choice"|"true_false", "question": "题目文本", "options": ["A选项","B选项","C选项","D选项"], "answer": "正确答案（选择题用A/B/C/D，判断题用true/false）", "explanation": "解析"}}]}}
 
@@ -41,6 +43,7 @@ class ExaminerAgent(BaseAgent):
         history = context.get("history")
         collection_id = context.get("collection_id")
         question_count = context.get("question_count", 5)
+        answer_language = context.get("answer_language", "auto")
 
         if pipeline is None:
             return AgentResponse(
@@ -86,7 +89,11 @@ class ExaminerAgent(BaseAgent):
             count = min(question_count, 10)
 
             # Step 3: Generate quiz via LLM
-            system_msg = EXAMINER_SYSTEM_PROMPT.format(count=count, context=context_text)
+            system_msg = EXAMINER_SYSTEM_PROMPT.format(
+                count=count,
+                context=context_text,
+                language_instruction=answer_language_instruction(answer_language, query),
+            )
             messages = [
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": f"请根据以上资料，生成{count}道测验题目。"},
@@ -160,6 +167,7 @@ class ExaminerAgent(BaseAgent):
         history = context.get("history")
         collection_id = context.get("collection_id")
         question_count = context.get("question_count", 5)
+        answer_language = context.get("answer_language", "auto")
 
         if pipeline is None:
             yield {"type": "token", "text": "Examiner Agent 暂时不可用（RAG pipeline 未初始化）。"}
@@ -208,7 +216,11 @@ class ExaminerAgent(BaseAgent):
             )[:4000]
             count = min(question_count, 10)
 
-            system_msg = EXAMINER_SYSTEM_PROMPT.format(count=count, context=context_text)
+            system_msg = EXAMINER_SYSTEM_PROMPT.format(
+                count=count,
+                context=context_text,
+                language_instruction=answer_language_instruction(answer_language, query),
+            )
             messages = [
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": f"请根据以上资料，生成{count}道测验题目。"},

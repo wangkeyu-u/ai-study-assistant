@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 # ── Document ───────────────────────────────────────────────
@@ -62,6 +64,7 @@ class ChatRequest(BaseModel):
     message: str
     collection_id: str | None = None
     document_ids: list[str] = Field(default_factory=list, max_length=5)
+    answer_language: Literal["auto", "zh", "en"] = "auto"
 
 
 class CitationData(BaseModel):
@@ -114,11 +117,21 @@ class DebugInfo(BaseModel):
     query: str
     rewritten_query: str | None = None
     retrieval_queries: list[str] = []
+    query_intent: str | None = None
+    answer_style: str | None = None
+    query_keywords: list[str] = []
+    query_language: str | None = None
+    corpus_languages: list[str] = []
+    answer_language: str | None = None
     embedding_model: str
     retrieval_mode: str = "vector"
     confidence_rejected: bool = False
     confidence_score: float | None = None
     rejection_reason: str | None = None
+    context_strategy: str | None = None
+    context_chunks_before: int | None = None
+    context_chunks_after: int | None = None
+    context_coverage_score: float | None = None
     top_k_chunks: list[RetrievedChunkInfo]
     final_prompt: str
     token_usage: TokenUsage

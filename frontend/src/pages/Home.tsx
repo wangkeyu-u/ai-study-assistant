@@ -155,28 +155,35 @@ export default function Home() {
           </section>
         </div>
 
-        <section className="mt-10 grid gap-3 md:grid-cols-3">
-          <button className="quick-card" onClick={() => navigate('/documents')}>
-            <Icon name="upload" />
-            <span>
+        <section className="home-actions mt-10" aria-label={t('home.quickActions')}>
+          <button className="home-action-primary" onClick={() => navigate('/documents')}>
+            <span className="home-action-icon">
+              <Icon name="upload" size={20} />
+            </span>
+            <span className="home-action-copy">
               <strong>{t('home.upload')}</strong>
               <small>{t('home.uploadHint')}</small>
             </span>
+            <Icon name="arrow" size={17} className="home-action-arrow" />
           </button>
-          <button className="quick-card" onClick={() => navigate('/documents')}>
-            <Icon name="layers" />
-            <span>
-              <strong>{t('home.compare')}</strong>
-              <small>{t('home.compareHint')}</small>
-            </span>
-          </button>
-          <button className="quick-card" onClick={() => navigate('/quiz')}>
-            <Icon name="quiz" />
-            <span>
-              <strong>{t('home.review')}</strong>
-              <small>{t('home.reviewHint')}</small>
-            </span>
-          </button>
+          <div className="home-action-list">
+            <button className="home-action-secondary" onClick={() => navigate('/documents')}>
+              <Icon name="layers" size={18} />
+              <span>
+                <strong>{t('home.compare')}</strong>
+                <small>{t('home.compareHint')}</small>
+              </span>
+              <Icon name="arrow" size={15} />
+            </button>
+            <button className="home-action-secondary" onClick={() => navigate('/quiz')}>
+              <Icon name="quiz" size={18} />
+              <span>
+                <strong>{t('home.review')}</strong>
+                <small>{t('home.reviewHint')}</small>
+              </span>
+              <Icon name="arrow" size={15} />
+            </button>
+          </div>
         </section>
       </div>
     </div>

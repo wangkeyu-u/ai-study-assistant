@@ -89,15 +89,27 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export type AnswerLanguage = 'auto' | 'zh' | 'en';
+
 export interface DebugInfo {
   query: string;
   rewritten_query?: string | null;
   retrieval_queries?: string[];
+  query_intent?: string | null;
+  answer_style?: string | null;
+  query_keywords?: string[];
+  query_language?: string | null;
+  corpus_languages?: string[];
+  answer_language?: string | null;
   embedding_model: string;
   retrieval_mode?: string;
   confidence_rejected?: boolean;
   confidence_score?: number | null;
   rejection_reason?: string | null;
+  context_strategy?: string | null;
+  context_chunks_before?: number | null;
+  context_chunks_after?: number | null;
+  context_coverage_score?: number | null;
   top_k_chunks: {
     chunk_id: string;
     text_preview: string;
@@ -116,6 +128,48 @@ export interface DebugInfo {
   };
   retrieval_time_ms: number;
   generation_time_ms: number;
+}
+
+export interface RagReadinessModule {
+  id: string;
+  label: string;
+  status: 'enabled' | 'optional' | string;
+  summary: string;
+  talking_points: string[];
+}
+
+export interface RagQualityGate {
+  name: string;
+  enabled: boolean;
+  description: string;
+}
+
+export interface RagDemoStep {
+  title: string;
+  prompt: string;
+  what_to_show: string;
+}
+
+export interface RagReadiness {
+  readiness_score: number;
+  data: {
+    documents_total: number;
+    documents_ready: number;
+    chunks: number;
+    vectors: number;
+    sessions: number;
+    citations: number;
+  };
+  runtime: {
+    embedding_provider: string;
+    embedding_model: string;
+    llm_provider: string;
+    llm_model: string;
+    vector_store_healthy: boolean;
+  };
+  modules: RagReadinessModule[];
+  quality_gates: RagQualityGate[];
+  demo_script: RagDemoStep[];
 }
 
 export interface ChatStreamResult {
@@ -179,6 +233,15 @@ export async function getChunks(docId: string): Promise<ChunkInfo[]> {
 export async function deleteDocument(docId: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/documents/${docId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(getApiErrorMessage('api.deleteFailed'));
+}
+
+export async function reindexDocument(docId: string): Promise<Document> {
+  const res = await fetch(`${BASE_URL}/documents/${docId}/reindex`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: '' }));
+    throw new Error(err.detail || getApiErrorMessage('api.reindexFailed'));
+  }
+  return res.json();
 }
 
 // ── Tag API ───────────────────────────────────────────────
@@ -346,7 +409,8 @@ export async function sendChatMessage(
   sessionId?: string,
   collectionId?: string | null,
   handlers?: ChatStreamHandlers,
-  documentIds?: string[]
+  documentIds?: string[],
+  answerLanguage: AnswerLanguage = 'auto'
 ): Promise<ChatStreamResult> {
   const res = await fetch(`${BASE_URL}/chat`, {
     method: 'POST',
@@ -356,6 +420,7 @@ export async function sendChatMessage(
       message,
       collection_id: collectionId,
       document_ids: documentIds || [],
+      answer_language: answerLanguage,
     }),
   });
   return consumeChatStream(res, handlers);
@@ -553,6 +618,10 @@ export async function getDashboard(): Promise<DashboardData> {
   return fetchJson<DashboardData>(`${BASE_URL}/quiz/dashboard`);
 }
 
+export async function getRagReadiness(): Promise<RagReadiness> {
+  return fetchJson<RagReadiness>(`${BASE_URL}/rag/readiness`);
+}
+
 // ── Knowledge Graph API ──────────────────────────────────
 
 export interface GraphNode {
@@ -627,12 +696,18 @@ export async function sendMultiAgentChat(
   message: string,
   sessionId?: string,
   collectionId?: string | null,
-  handlers?: ChatStreamHandlers
+  handlers?: ChatStreamHandlers,
+  answerLanguage: AnswerLanguage = 'auto'
 ): Promise<ChatStreamResult> {
   const res = await fetch(`${BASE_URL}/multi-agent/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, session_id: sessionId, collection_id: collectionId }),
+    body: JSON.stringify({
+      message,
+      session_id: sessionId,
+      collection_id: collectionId,
+      answer_language: answerLanguage,
+    }),
   });
   return consumeChatStream(res, handlers);
 }

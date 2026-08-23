@@ -75,6 +75,7 @@ class SupervisorAgent:
         pipeline: RAGPipeline,
         history: list[dict] | None = None,
         collection_id: str | None = None,
+        answer_language: str = "auto",
     ) -> AgentResponse:
         """Classify intent and delegate to the appropriate specialist agent.
 
@@ -101,6 +102,7 @@ class SupervisorAgent:
             "history": history,
             "collection_id": collection_id,
             "intent": intent,
+            "answer_language": answer_language,
         }
 
         # Step 4: Delegate
@@ -116,6 +118,7 @@ class SupervisorAgent:
         pipeline: RAGPipeline,
         history: list[dict] | None = None,
         collection_id: str | None = None,
+        answer_language: str = "auto",
     ) -> AsyncGenerator[dict, None]:
         """Classify intent and stream from the appropriate specialist agent.
 
@@ -135,6 +138,7 @@ class SupervisorAgent:
             "history": history,
             "collection_id": collection_id,
             "intent": intent,
+            "answer_language": answer_language,
         }
 
         # Step 4: Stream from the specialist agent

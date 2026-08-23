@@ -7,6 +7,7 @@ import {
   getModelCatalog,
   updateModelSelection,
 } from '../api';
+import Icon from '../components/Icon';
 
 export default function Settings() {
   const { t } = useTranslation();
@@ -97,20 +98,24 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+      <div className="product-state" aria-live="polite">
+        <div className="product-state-skeleton" />
+        <div className="product-state-skeleton is-short" />
+        <span>{t('common.loading')}</span>
       </div>
     );
   }
 
   return (
-    <div className="spell-page h-full overflow-y-auto bg-transparent p-6">
+    <div className="product-page settings-page h-full overflow-y-auto">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">{t('settings.title')}</h1>
+        <header className="product-page-header px-0">
+          <h1>{t('settings.title')}</h1>
+        </header>
 
         {/* API Key 配置卡片 */}
-        <div className="spell-card bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white">
+        <div className="product-section overflow-hidden">
+          <div className="settings-section-header">
             <h2 className="text-lg font-semibold text-gray-800">{t('settings.apiConfig')}</h2>
             <p className="text-sm text-gray-500 mt-1">{t('settings.apiConfigDesc')}</p>
           </div>
@@ -259,7 +264,7 @@ export default function Settings() {
             <button
               onClick={handleSaveModel}
               disabled={saving || !modelCatalog}
-              className="spell-button w-full px-6 py-2.5 bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-lg hover:from-slate-900 hover:to-slate-800 disabled:bg-gray-400 text-sm font-medium transition-colors"
+              className="primary-action w-full justify-center"
             >
               {saving ? t('common.saving') : t('settings.saveModel')}
             </button>
@@ -280,26 +285,26 @@ export default function Settings() {
         </div>
 
         {/* 使用说明 */}
-        <div className="spell-card mt-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-amber-50 to-white">
+        <div className="product-section mt-5 overflow-hidden">
+          <div className="settings-section-header">
             <h2 className="text-lg font-semibold text-gray-800">{t('settings.guide')}</h2>
           </div>
           <div className="p-6 space-y-3 text-sm text-gray-600">
             <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">
-                1
+              <span className="settings-guide-icon">
+                <Icon name="check" size={14} />
               </span>
               <p>{t('settings.guide1')}</p>
             </div>
             <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">
-                2
+              <span className="settings-guide-icon">
+                <Icon name="check" size={14} />
               </span>
               <p>{t('settings.guide2')}</p>
             </div>
             <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">
-                3
+              <span className="settings-guide-icon">
+                <Icon name="check" size={14} />
               </span>
               <p>{t('settings.guide3')}</p>
             </div>

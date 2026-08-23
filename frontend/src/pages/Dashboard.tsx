@@ -1,19 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DashboardData, getDashboard } from '../api';
+import { DashboardData, RagReadiness, getDashboard, getRagReadiness } from '../api';
+import Icon, { IconName } from '../components/Icon';
 
 export default function DashboardPage() {
   const { t } = useTranslation();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [ragReadiness, setRagReadiness] = useState<RagReadiness | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchDashboard = useCallback(async () => {
     try {
       setLoading(true);
-      const d = await getDashboard();
-      setData(d);
+      const [nextDashboard, nextReadiness] = await Promise.all([
+        getDashboard(),
+        getRagReadiness().catch(() => null),
+      ]);
+      setData(nextDashboard);
+      setRagReadiness(nextReadiness);
     } catch {
-      /* ignore */
+      setData(null);
+      setRagReadiness(null);
     } finally {
       setLoading(false);
     }
@@ -23,258 +30,243 @@ export default function DashboardPage() {
     fetchDashboard();
   }, [fetchDashboard]);
 
-  if (loading)
+  if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-10 h-10 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-gray-400 text-sm">{t('common.loading')}</p>
-        </div>
+      <div className="product-state" aria-live="polite">
+        <div className="product-state-skeleton" />
+        <div className="product-state-skeleton is-short" />
+        <span>{t('common.loading')}</span>
       </div>
     );
+  }
 
-  if (!data)
+  if (!data) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-gray-100 to-gray-50 rounded-2xl flex items-center justify-center">
-            <span className="text-3xl">📊</span>
-          </div>
-          <p className="text-gray-500 font-medium">{t('dashboard.loadFailed')}</p>
-          <p className="text-sm text-gray-400 mt-1">{t('dashboard.loadFailedHint')}</p>
-        </div>
+      <div className="product-state">
+        <span className="product-state-icon is-warning">
+          <Icon name="offline" size={22} />
+        </span>
+        <h1>{t('dashboard.loadFailed')}</h1>
+        <p>{t('dashboard.loadFailedHint')}</p>
+        <button className="secondary-action" onClick={fetchDashboard}>
+          {t('common.refresh')}
+        </button>
       </div>
     );
+  }
 
   const accuracy =
-    data.total_quizzes > 0 && data.total_correct_answers > 0
+    data.total_quizzes > 0
       ? Math.round((data.total_correct_answers / Math.max(data.total_questions_asked, 1)) * 100)
       : 0;
-
-  const maxActivity = Math.max(...data.recent_activity.map((a) => a.questions_count), 1);
+  const maxActivity = Math.max(...data.recent_activity.map((item) => item.questions_count), 1);
+  const metrics: { label: string; value: number; icon: IconName }[] = [
+    { label: t('dashboard.totalDocs'), value: data.total_documents, icon: 'file' },
+    { label: t('dashboard.totalChunks'), value: data.total_chunks, icon: 'layers' },
+    { label: t('dashboard.totalQuestions'), value: data.total_questions_asked, icon: 'chat' },
+    { label: t('dashboard.totalQuizzes'), value: data.total_quizzes, icon: 'quiz' },
+  ];
+  const moduleIcons: Record<string, IconName> = {
+    ingestion: 'upload',
+    retrieval: 'search',
+    planning: 'graph',
+    context: 'layers',
+    generation: 'sparkles',
+    observability: 'chart',
+  };
 
   return (
-    <div className="spell-page h-full flex flex-col">
-      <div className="page-header p-6 border-b border-gray-200 bg-white">
-        <h2 className="text-xl font-semibold text-gray-800">{t('dashboard.title')}</h2>
-        <p className="text-sm text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
-      </div>
+    <div className="product-page h-full overflow-auto">
+      <header className="product-page-header">
+        <h1>{t('dashboard.title')}</h1>
+        <p>{t('dashboard.subtitle')}</p>
+      </header>
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        {/* Stat Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            {
-              label: t('dashboard.totalDocs'),
-              value: data.total_documents,
-              icon: '📄',
-              gradient: 'from-blue-500 to-blue-600',
-              bgLight: 'bg-blue-50',
-            },
-            {
-              label: t('dashboard.totalChunks'),
-              value: data.total_chunks,
-              icon: '🧩',
-              gradient: 'from-purple-500 to-purple-600',
-              bgLight: 'bg-purple-50',
-            },
-            {
-              label: t('dashboard.totalQuestions'),
-              value: data.total_questions_asked,
-              icon: '💡',
-              gradient: 'from-emerald-500 to-emerald-600',
-              bgLight: 'bg-emerald-50',
-            },
-            {
-              label: t('dashboard.totalQuizzes'),
-              value: data.total_quizzes,
-              icon: '✍️',
-              gradient: 'from-orange-500 to-orange-600',
-              bgLight: 'bg-orange-50',
-            },
-          ].map(({ label, value, icon, gradient, bgLight: _bgLight }) => (
-            <div
-              key={label}
-              className="metric-spell rounded-xl overflow-hidden shadow-sm border border-gray-100 transition-all duration-200 hover:shadow-md"
-            >
-              <div className={`bg-gradient-to-br ${gradient} p-4`}>
-                <div className="flex items-center justify-between">
+      <div className="product-page-content dashboard-layout">
+        <section className="dashboard-metrics" aria-label={t('dashboard.title')}>
+          {metrics.map((metric) => (
+            <div className="dashboard-metric" key={metric.label}>
+              <span>
+                <Icon name={metric.icon} size={18} />
+              </span>
+              <p>{metric.label}</p>
+              <strong>{metric.value}</strong>
+            </div>
+          ))}
+        </section>
+
+        {ragReadiness && (
+          <section className="rag-readiness-panel product-section">
+            <div className="rag-readiness-hero">
+              <div>
+                <span className="rag-readiness-kicker">{t('dashboard.ragReadinessKicker')}</span>
+                <h2>{t('dashboard.ragReadinessTitle')}</h2>
+                <p>{t('dashboard.ragReadinessHint')}</p>
+              </div>
+              <div className="rag-score-card">
+                <span>{t('dashboard.ragReadinessScore')}</span>
+                <strong>{Math.round(ragReadiness.readiness_score * 100)}%</strong>
+                <small>
+                  {ragReadiness.runtime.llm_provider} / {ragReadiness.runtime.llm_model}
+                </small>
+              </div>
+            </div>
+
+            <div className="rag-runtime-grid">
+              <div>
+                <span>{t('dashboard.ragVectors')}</span>
+                <strong>{ragReadiness.data.vectors}</strong>
+              </div>
+              <div>
+                <span>{t('dashboard.ragCitations')}</span>
+                <strong>{ragReadiness.data.citations}</strong>
+              </div>
+              <div>
+                <span>{t('dashboard.ragEmbedding')}</span>
+                <strong>{ragReadiness.runtime.embedding_model}</strong>
+              </div>
+              <div>
+                <span>{t('dashboard.ragHealth')}</span>
+                <strong>
+                  {ragReadiness.runtime.vector_store_healthy
+                    ? t('dashboard.ragHealthy')
+                    : t('dashboard.ragNeedsAttention')}
+                </strong>
+              </div>
+            </div>
+
+            <div className="rag-module-grid">
+              {ragReadiness.modules.map((module) => (
+                <article key={module.id} className="rag-module-card">
                   <div>
-                    <p className="text-xs text-white/80 font-medium">{label}</p>
-                    <p className="text-3xl font-bold text-white mt-1">{value}</p>
+                    <span className="rag-module-icon">
+                      <Icon name={moduleIcons[module.id] || 'database'} size={17} />
+                    </span>
+                    <span
+                      className={`rag-module-status ${
+                        module.status === 'enabled' ? 'is-enabled' : ''
+                      }`}
+                    >
+                      {module.status}
+                    </span>
                   </div>
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                    <span className="text-xl">{icon}</span>
-                  </div>
+                  <h3>{module.label}</h3>
+                  <p>{module.summary}</p>
+                  <ul>
+                    {module.talking_points.slice(0, 2).map((point) => (
+                      <li key={point}>{point}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+
+            <div className="rag-demo-row">
+              <div>
+                <h3>{t('dashboard.ragQualityGates')}</h3>
+                <div className="rag-gate-list">
+                  {ragReadiness.quality_gates.map((gate) => (
+                    <div key={gate.name}>
+                      <Icon name={gate.enabled ? 'check' : 'offline'} size={15} />
+                      <span>
+                        <strong>{gate.name}</strong>
+                        <small>{gate.description}</small>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3>{t('dashboard.ragDemoScript')}</h3>
+                <div className="rag-demo-list">
+                  {ragReadiness.demo_script.map((step) => (
+                    <div key={step.title}>
+                      <strong>{step.title}</strong>
+                      <p>{step.prompt}</p>
+                      <small>{step.what_to_show}</small>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          </section>
+        )}
 
-        {/* Quiz Stats */}
         {data.total_quizzes > 0 && (
-          <div className="grid grid-cols-3 gap-4">
-            <div className="spell-card bg-white rounded-xl border border-gray-200 p-5 text-center transition-all duration-200 hover:shadow-sm">
-              <div className="w-10 h-10 mx-auto mb-2 bg-green-50 rounded-xl flex items-center justify-center">
-                <span className="text-lg">✅</span>
-              </div>
-              <p className="text-xs text-gray-500 font-medium">{t('dashboard.correctCount')}</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">{data.total_correct_answers}</p>
+          <section className="dashboard-summary">
+            <div>
+              <span>{t('dashboard.correctCount')}</span>
+              <strong>{data.total_correct_answers}</strong>
             </div>
-            <div className="spell-card bg-white rounded-xl border border-gray-200 p-5 text-center transition-all duration-200 hover:shadow-sm">
-              <div className="w-10 h-10 mx-auto mb-2 bg-red-50 rounded-xl flex items-center justify-center">
-                <span className="text-lg">❌</span>
-              </div>
-              <p className="text-xs text-gray-500 font-medium">{t('dashboard.wrongCount')}</p>
-              <p className="text-2xl font-bold text-red-600 mt-1">{data.wrong_answer_count}</p>
+            <div>
+              <span>{t('dashboard.wrongCount')}</span>
+              <strong>{data.wrong_answer_count}</strong>
             </div>
-            <div className="spell-card bg-white rounded-xl border border-gray-200 p-5 text-center transition-all duration-200 hover:shadow-sm">
-              <div className="w-10 h-10 mx-auto mb-2 bg-blue-50 rounded-xl flex items-center justify-center">
-                <span className="text-lg">🎯</span>
-              </div>
-              <p className="text-xs text-gray-500 font-medium">{t('dashboard.accuracy')}</p>
-              <p className="text-2xl font-bold text-blue-600 mt-1">{accuracy}%</p>
-              <div className="mt-2 w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-1000 ${
-                    accuracy >= 80
-                      ? 'bg-gradient-to-r from-green-400 to-emerald-500'
-                      : accuracy >= 60
-                        ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
-                        : 'bg-gradient-to-r from-red-400 to-rose-500'
-                  }`}
-                  style={{ width: `${accuracy}%` }}
-                />
-              </div>
+            <div className="is-accent">
+              <span>{t('dashboard.accuracy')}</span>
+              <strong>{accuracy}%</strong>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Tag Stats */}
-        {data.tag_stats.length > 0 && (
-          <div className="spell-card bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-5 bg-blue-500 rounded-full"></span>
-              {t('dashboard.tagStats')}
-            </h3>
-            <div className="space-y-3">
-              {data.tag_stats.map((tagStat, i) => {
-                const maxDoc = Math.max(...data.tag_stats.map((s) => s.doc_count), 1);
-                const maxQ = Math.max(...data.tag_stats.map((s) => s.question_count), 1);
-                const colors = [
-                  'from-blue-400 to-blue-500',
-                  'from-purple-400 to-purple-500',
-                  'from-emerald-400 to-emerald-500',
-                  'from-amber-400 to-amber-500',
-                  'from-rose-400 to-rose-500',
-                  'from-cyan-400 to-cyan-500',
-                ];
-                const barColor = colors[i % colors.length];
-                return (
-                  <div key={tagStat.tag} className="group">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-gray-700 font-medium">{tagStat.tag}</span>
-                      <div className="flex gap-3 text-xs text-gray-500">
-                        <span className="px-2 py-0.5 bg-gray-50 rounded-full">
-                          {tagStat.doc_count} {t('dashboard.documents_unit')}
-                        </span>
-                        <span className="px-2 py-0.5 bg-gray-50 rounded-full">
-                          {tagStat.question_count} {t('dashboard.questions_unit')}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full bg-gradient-to-r ${barColor} rounded-full transition-all duration-700`}
-                          style={{ width: `${(tagStat.doc_count / maxDoc) * 100}%` }}
-                        />
-                      </div>
-                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full bg-gradient-to-r ${barColor} rounded-full transition-all duration-700 opacity-60`}
-                          style={{ width: `${(tagStat.question_count / maxQ) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Weak Points */}
-        {data.weak_points.length > 0 && (
-          <div className="spell-card bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-5 bg-red-500 rounded-full"></span>
-              {t('dashboard.weakPoints')}
-            </h3>
-            <div className="space-y-4">
-              {data.weak_points.map((w) => (
-                <div key={w.concept} className="group">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm text-gray-700 font-medium">{w.concept}</span>
-                    <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        w.mastery_score < 0.3
-                          ? 'bg-red-50 text-red-600'
-                          : w.mastery_score < 0.7
-                            ? 'bg-amber-50 text-amber-600'
-                            : 'bg-green-50 text-green-600'
-                      }`}
-                    >
-                      {Math.round(w.mastery_score * 100)}%
+        <div className="dashboard-columns">
+          {data.tag_stats.length > 0 && (
+            <section className="product-section">
+              <div className="product-section-heading">
+                <h2>{t('dashboard.tagStats')}</h2>
+              </div>
+              <div className="dashboard-list">
+                {data.tag_stats.map((item) => (
+                  <div className="dashboard-list-row" key={item.tag}>
+                    <strong>{item.tag}</strong>
+                    <span>
+                      {item.doc_count} {t('dashboard.documents_unit')}
+                    </span>
+                    <span>
+                      {item.question_count} {t('dashboard.questions_unit')}
                     </span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                    <div
-                      className={`h-3 rounded-full transition-all duration-700 ease-out ${
-                        w.mastery_score < 0.3
-                          ? 'bg-gradient-to-r from-red-400 to-red-500'
-                          : w.mastery_score < 0.7
-                            ? 'bg-gradient-to-r from-amber-400 to-yellow-500'
-                            : 'bg-gradient-to-r from-green-400 to-emerald-500'
-                      }`}
-                      style={{ width: `${w.mastery_score * 100}%` }}
-                    />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {data.weak_points.length > 0 && (
+            <section className="product-section">
+              <div className="product-section-heading">
+                <h2>{t('dashboard.weakPoints')}</h2>
+              </div>
+              <div className="dashboard-list">
+                {data.weak_points.map((item) => (
+                  <div className="dashboard-list-row is-weak" key={item.concept}>
+                    <strong>{item.concept}</strong>
+                    <span>{Math.round(item.mastery_score * 100)}%</span>
                   </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+
+        {data.recent_activity.some((item) => item.questions_count > 0) && (
+          <section className="product-section">
+            <div className="product-section-heading">
+              <h2>{t('dashboard.recentActivity')}</h2>
+            </div>
+            <div className="dashboard-activity">
+              {data.recent_activity.map((item) => (
+                <div key={item.date}>
+                  <span>{item.questions_count}</span>
+                  <i
+                    style={{
+                      height: `${Math.max((item.questions_count / maxActivity) * 100, 3)}%`,
+                    }}
+                  />
+                  <small>{item.date}</small>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Recent Activity */}
-        {data.recent_activity.some((a) => a.questions_count > 0) && (
-          <div className="spell-card bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-5 bg-emerald-500 rounded-full"></span>
-              {t('dashboard.recentActivity')}
-            </h3>
-            <div className="flex items-end gap-3 h-40 px-2">
-              {data.recent_activity.map((a) => {
-                const heightPercent = maxActivity > 0 ? (a.questions_count / maxActivity) * 100 : 0;
-                return (
-                  <div key={a.date} className="flex-1 flex flex-col items-center gap-2">
-                    <span className="text-xs text-gray-500 font-medium">{a.questions_count}</span>
-                    <div
-                      className="w-full flex items-end justify-center"
-                      style={{ height: '100px' }}
-                    >
-                      <div
-                        className="w-full max-w-[36px] bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg transition-all duration-500 hover:from-blue-600 hover:to-blue-500"
-                        style={{ height: `${Math.max(heightPercent, 3)}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-gray-400 font-medium">{a.date}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          </section>
         )}
       </div>
     </div>

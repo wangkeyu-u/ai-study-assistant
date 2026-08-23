@@ -43,11 +43,21 @@ from app.config import get_settings
 from app.db.database import get_db
 from app.models.schemas import DebugInfo, RetrievedChunkInfo, TokenUsage
 from app.services.chunker import TextChunker
+from app.services.context_expander import expand_chunk_neighbors
+from app.services.context_optimizer import optimize_context_chunks
 from app.services.embedder import BaseEmbedder
 from app.services.generator import GenerationResult, Generator
 from app.services.image_extractor import extract_pdf_images
+from app.services.language import (
+    AnswerLanguage,
+    detect_corpus_languages,
+    detect_text_language,
+    resolve_answer_language,
+    translation_targets,
+)
 from app.services.parser import DocumentParser
 from app.services.quality import batch_score_chunks
+from app.services.query_intelligence import analyze_query, build_response_instructions
 from app.services.query_planner import retrieve_with_query_plan
 from app.services.reranker import CrossEncoderReranker
 from app.services.retriever import Retriever
@@ -138,7 +148,7 @@ class RAGPipeline:
                 # Step 3: Embed
                 logger.info("Generating embeddings for %d chunks", len(chunks))
                 chunk_texts = [c.text for c in chunks]
-                embeddings = self.embedder.embed(chunk_texts)
+                embeddings = self.embedder.embed([c.embedding_text for c in chunks])
 
                 # Step 4: Store in ChromaDB
                 chunk_ids = [str(uuid.uuid4()) for _ in chunks]
@@ -265,6 +275,113 @@ class RAGPipeline:
                 logger.warning("Failed to update document status to 'error': %s", inner_e)
             return {"doc_id": doc_id, "status": "error", "error": str(e)}
 
+    def reindex_document(self, doc_id: str) -> dict:
+        """Rebuild active chunks while retaining old rows for historical citations."""
+        with get_db() as conn:
+            document = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+            if not document:
+                return {"success": False, "error": "Document not found"}
+            old_chunk_ids = [
+                row["id"]
+                for row in conn.execute(
+                    "SELECT id FROM chunks WHERE doc_id=? AND is_active=1",
+                    (doc_id,),
+                ).fetchall()
+            ]
+
+        parse_result = self.parser.parse(document["file_path"], document["file_type"])
+        if parse_result.error:
+            return {"success": False, "error": parse_result.error}
+        chunks = self.chunker.chunk_segments(parse_result.segments)
+        if not chunks:
+            return {"success": False, "error": "文档内容无法分块"}
+
+        chunk_ids = [str(uuid.uuid4()) for _ in chunks]
+        embeddings = self.embedder.embed([chunk.embedding_text for chunk in chunks])
+        chunk_texts = [chunk.text for chunk in chunks]
+        metadatas = [
+            {
+                "doc_id": doc_id,
+                "doc_name": document["filename"],
+                "chunk_index": chunk.chunk_index,
+                "page_num": chunk.page_num if chunk.page_num is not None else 0,
+                "heading": chunk.heading or "",
+                "collection_id": document["collection_id"] or "",
+            }
+            for chunk in chunks
+        ]
+        quality_scores = batch_score_chunks(chunk_texts)
+
+        try:
+            self.vector_store.add_chunks(
+                chunk_ids=chunk_ids,
+                embeddings=embeddings,
+                texts=chunk_texts,
+                metadatas=metadatas,
+            )
+            with get_db() as conn:
+                conn.execute(
+                    "UPDATE chunks SET is_active=0 WHERE doc_id=? AND is_active=1",
+                    (doc_id,),
+                )
+                for chunk_id, chunk, quality in zip(
+                    chunk_ids,
+                    chunks,
+                    quality_scores,
+                    strict=True,
+                ):
+                    conn.execute(
+                        """INSERT INTO chunks
+                           (id, doc_id, chunk_index, text, page_num, heading,
+                            token_count, is_active)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+                        (
+                            chunk_id,
+                            doc_id,
+                            chunk.chunk_index,
+                            chunk.text,
+                            chunk.page_num,
+                            chunk.heading,
+                            chunk.token_count,
+                        ),
+                    )
+                    conn.execute(
+                        """INSERT INTO chunk_quality
+                           (chunk_id, info_density, is_low_quality, reason)
+                           VALUES (?, ?, ?, ?)""",
+                        (
+                            chunk_id,
+                            quality["info_density"],
+                            1 if quality["is_low_quality"] else 0,
+                            quality["reason"],
+                        ),
+                    )
+                conn.execute(
+                    """UPDATE documents
+                       SET chunk_count=?, status='ready', error_message=NULL
+                       WHERE id=?""",
+                    (len(chunks), doc_id),
+                )
+                conn.commit()
+        except Exception as error:
+            self.vector_store.delete_chunks(chunk_ids)
+            logger.exception("Re-index failed for document %s", doc_id)
+            return {"success": False, "error": str(error)}
+
+        removed_vectors = self.vector_store.delete_chunks(old_chunk_ids)
+        logger.info(
+            "Re-indexed document %s: %d -> %d active chunks",
+            doc_id,
+            len(old_chunk_ids),
+            len(chunks),
+        )
+        return {
+            "success": True,
+            "doc_id": doc_id,
+            "chunk_count": len(chunks),
+            "old_vectors_removed": removed_vectors,
+        }
+
     # ── Query ──────────────────────────────────────────────
 
     async def query(
@@ -273,6 +390,7 @@ class RAGPipeline:
         history: list[dict] | None = None,
         collection_id: str | None = None,
         document_ids: list[str] | None = None,
+        answer_language: AnswerLanguage = "auto",
     ) -> tuple[GenerationResult, DebugInfo]:
         """Full query pipeline: rewrite → embed → retrieve → generate.
 
@@ -303,6 +421,9 @@ class RAGPipeline:
               for debugging retrieval quality and prompt engineering.
         """
         settings = self.settings
+        query_profile = analyze_query(question)
+        query_language = detect_text_language(question)
+        corpus_languages = detect_corpus_languages(collection_id, document_ids)
 
         # ── Step 0: Query Rewrite ──────────────────────────────
         # Purpose: Convert context-dependent queries ("那第二章呢？") into
@@ -323,7 +444,7 @@ class RAGPipeline:
         retriever = Retriever(
             vector_store=self.vector_store,
             embedder=self.embedder,
-            top_k=settings.top_k,  # default: 5
+            top_k=max(settings.top_k, settings.context_candidate_top_k),
             similarity_threshold=settings.similarity_threshold,  # default: 0.3
             hybrid_search_enabled=settings.hybrid_search_enabled,
             candidate_multiplier=settings.retrieval_candidate_multiplier,
@@ -333,7 +454,17 @@ class RAGPipeline:
             reranker=self.reranker,
             rerank_top_n=settings.reranker_top_n,
         )
-        retrieval_queries = [rewritten_query]
+        translated_queries: list[str] = []
+        if settings.cross_language_retrieval_enabled:
+            for target_language in translation_targets(query_language, corpus_languages):
+                translated = await self.generator.translate_query_for_retrieval(
+                    rewritten_query,
+                    target_language,
+                )
+                if translated != rewritten_query and translated not in translated_queries:
+                    translated_queries.append(translated)
+
+        retrieval_queries = [rewritten_query, *translated_queries]
         if settings.query_decomposition_enabled:
             retrieval_result, retrieval_queries = retrieve_with_query_plan(
                 retriever,
@@ -341,16 +472,87 @@ class RAGPipeline:
                 collection_id=collection_id,
                 document_ids=document_ids,
                 max_subqueries=settings.query_decomposition_max_subqueries,
+                additional_queries=translated_queries,
             )
         else:
-            retrieval_result = retriever.retrieve(
+            retrieval_result, retrieval_queries = retrieve_with_query_plan(
+                retriever,
                 rewritten_query,
                 collection_id=collection_id,
                 document_ids=document_ids,
+                max_subqueries=0,
+                additional_queries=translated_queries,
             )
+
+        # HyDE is a guarded fallback, not trusted evidence. It only proposes a
+        # semantic search passage when ordinary and translated retrieval fail.
+        if settings.hyde_fallback_enabled and corpus_languages and not retrieval_result.chunks:
+            hyde_language = (
+                "en"
+                if "en" in translation_targets(query_language, corpus_languages)
+                else "zh"
+                if query_language != "en"
+                else "en"
+            )
+            hypothetical_passage = await self.generator.generate_hypothetical_passage(
+                rewritten_query,
+                hyde_language,
+            )
+            if hypothetical_passage:
+                retrieval_result, retrieval_queries = retrieve_with_query_plan(
+                    retriever,
+                    rewritten_query,
+                    collection_id=collection_id,
+                    document_ids=document_ids,
+                    max_subqueries=settings.query_decomposition_max_subqueries,
+                    additional_queries=[*translated_queries, hypothetical_passage],
+                )
+                retrieval_result.mode = f"hyde_{retrieval_result.mode}"
 
         # If no chunks pass the threshold, generator will return a
         # "资料不足" message instead of hallucinating an answer.
+        context_selection = optimize_context_chunks(
+            rewritten_query,
+            retrieval_result.chunks,
+            profile=query_profile,
+            max_chunks=settings.context_max_chunks,
+            max_chars=settings.context_max_chars,
+            document_ids=document_ids,
+            diversity_lambda=settings.context_mmr_lambda,
+            coverage_queries=[rewritten_query, *translated_queries],
+        )
+        generation_chunks = context_selection.chunks
+        has_lexical_context = any(
+            source in {"fts", "exact"}
+            for chunk in generation_chunks
+            for source in chunk.retrieval_sources
+        )
+        context_strategy = context_selection.strategy
+        if (
+            generation_chunks
+            and not has_lexical_context
+            and context_selection.coverage_score < settings.context_min_coverage_score
+        ):
+            logger.info(
+                "Context coverage gate rejected query '%s' (coverage=%.4f)",
+                question[:80],
+                context_selection.coverage_score,
+            )
+            retrieval_result.confidence_rejected = True
+            retrieval_result.rejection_reason = "context_coverage_below_threshold"
+            generation_chunks = []
+            context_strategy = f"{context_selection.strategy}:coverage_gate"
+
+        if generation_chunks:
+            generation_chunks = expand_chunk_neighbors(
+                generation_chunks,
+                window=settings.context_neighbor_window,
+                max_neighbors=settings.context_max_neighbors,
+                max_chunks=settings.context_max_chunks + settings.context_max_neighbors,
+                max_chars=settings.context_max_chars,
+            )
+            if len(generation_chunks) > context_selection.selected_count:
+                context_strategy = f"{context_strategy}:neighbors"
 
         # ── Step 2: LLM Generation ───────────────────────────
         # Uses the ORIGINAL question (not rewritten) so the LLM responds
@@ -358,10 +560,17 @@ class RAGPipeline:
         # for improving retrieval.
         # History is passed as additional context (last 10 messages = 5 turns).
         gen_start = time.time()
+        response_instructions = (
+            build_response_instructions(query_profile)
+            if settings.intent_aware_prompt_enabled
+            else None
+        )
         generation_result = await self.generator.generate(
             query=question,  # original question for LLM
-            chunks=retrieval_result.chunks,  # retrieved context
+            chunks=generation_chunks,  # selected context
             history=history,  # multi-turn context
+            response_instructions=response_instructions,
+            answer_language=answer_language,
         )
         gen_elapsed = (time.time() - gen_start) * 1000
         generation_result.generation_time_ms = gen_elapsed
@@ -376,11 +585,21 @@ class RAGPipeline:
             query=question,
             rewritten_query=rewritten_query if rewritten_query != question else None,
             retrieval_queries=retrieval_queries,
+            query_intent=query_profile.intent,
+            answer_style=query_profile.answer_style,
+            query_keywords=query_profile.keywords,
+            query_language=query_language,
+            corpus_languages=corpus_languages,
+            answer_language=resolve_answer_language(answer_language, question),
             embedding_model=settings.embedding_model,
             retrieval_mode=retrieval_result.mode,
             confidence_rejected=retrieval_result.confidence_rejected,
             confidence_score=retrieval_result.confidence_score,
             rejection_reason=retrieval_result.rejection_reason,
+            context_strategy=context_strategy,
+            context_chunks_before=context_selection.original_count,
+            context_chunks_after=len(generation_chunks),
+            context_coverage_score=round(context_selection.coverage_score, 4),
             top_k_chunks=[
                 RetrievedChunkInfo(
                     chunk_id=c.chunk_id,
@@ -395,7 +614,7 @@ class RAGPipeline:
                     rerank_score=(round(c.rerank_score, 4) if c.rerank_score is not None else None),
                     retrieval_sources=c.retrieval_sources,
                 )
-                for c in retrieval_result.chunks
+                for c in generation_chunks
             ],
             final_prompt=generation_result.final_prompt,  # full prompt for debugging
             token_usage=TokenUsage(

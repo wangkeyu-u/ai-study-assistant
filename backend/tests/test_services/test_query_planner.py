@@ -40,6 +40,21 @@ def test_build_retrieval_queries_splits_comma_joined_question():
     ]
 
 
+def test_build_retrieval_queries_preserves_comparison_dimensions():
+    query = (
+        "监督学习、无监督学习和强化学习有什么区别？请从训练数据、学习方式和应用场景三个方面比较。"
+    )
+
+    queries = build_retrieval_queries(query, max_subqueries=3)
+
+    assert queries == [
+        query,
+        "监督学习 训练数据 学习方式 应用场景",
+        "无监督学习 训练数据 学习方式 应用场景",
+        "强化学习 训练数据 学习方式 应用场景",
+    ]
+
+
 def test_merge_retrieval_results_uses_rrf_and_deduplicates_chunks():
     first = RetrievalResult(query="q", chunks=[_chunk("shared"), _chunk("a")], mode="hybrid")
     second = RetrievalResult(query="q2", chunks=[_chunk("b"), _chunk("shared")], mode="hybrid")
@@ -69,3 +84,27 @@ def test_retrieve_with_query_plan_runs_original_and_subqueries():
     assert queries == ["CNN和RNN分别用于什么任务？", "CNN用于什么任务", "RNN用于什么任务"]
     assert retriever.retrieve.call_count == 3
     assert {chunk.chunk_id for chunk in result.chunks} == {"original", "cnn", "rnn"}
+
+
+def test_retrieve_with_query_plan_fuses_translated_query():
+    retriever = MagicMock()
+    retriever.top_k = 3
+    retriever.rrf_k = 60
+    retriever.retrieve.side_effect = [
+        RetrievalResult(query="什么是RAG", chunks=[_chunk("zh-hit")], mode="vector"),
+        RetrievalResult(
+            query="what is retrieval augmented generation",
+            chunks=[_chunk("en-hit")],
+            mode="hybrid",
+        ),
+    ]
+
+    result, queries = retrieve_with_query_plan(
+        retriever,
+        "什么是RAG",
+        max_subqueries=0,
+        additional_queries=["what is retrieval augmented generation"],
+    )
+
+    assert queries == ["什么是RAG", "what is retrieval augmented generation"]
+    assert {chunk.chunk_id for chunk in result.chunks} == {"zh-hit", "en-hit"}

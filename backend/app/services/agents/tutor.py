@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator
 
 from app.services.agents.base import AgentResponse, BaseAgent
 from app.services.context_utils import build_context_text
+from app.services.language import answer_language_instruction
 from app.services.rag import RAGPipeline
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ TUTOR_SYSTEM_PROMPT = """你是一位资深导师（Tutor Agent）。你的任�
 4. 每个事实性陈述后标注引用来源 [编号]。
 5. 最后给出一个"核心要点"总结。
 6. 如果参考资料不足以完整解释，明确说明缺失的部分。
+7. {language_instruction}
 
 参考资料：
 {context}"""
@@ -41,6 +43,7 @@ class TutorAgent(BaseAgent):
         pipeline: RAGPipeline | None = context.get("pipeline")
         history = context.get("history")
         collection_id = context.get("collection_id")
+        answer_language = context.get("answer_language", "auto")
 
         if pipeline is None:
             return AgentResponse(
@@ -80,7 +83,10 @@ class TutorAgent(BaseAgent):
 
             # Step 2: Build tutor-specific prompt
             context_text = build_context_text(retrieval_result.chunks)
-            system_msg = TUTOR_SYSTEM_PROMPT.format(context=context_text)
+            system_msg = TUTOR_SYSTEM_PROMPT.format(
+                context=context_text,
+                language_instruction=answer_language_instruction(answer_language, query),
+            )
 
             messages = [{"role": "system", "content": system_msg}]
             if history:
@@ -110,7 +116,14 @@ class TutorAgent(BaseAgent):
 
         except Exception as e:
             logger.exception("TutorAgent failed, falling back to default RAG")
-            return await self._fallback(pipeline, query, history, collection_id, error=e)
+            return await self._fallback(
+                pipeline,
+                query,
+                history,
+                collection_id,
+                answer_language,
+                error=e,
+            )
 
     async def process_stream(
         self, query: str, context: dict | None = None
@@ -124,6 +137,7 @@ class TutorAgent(BaseAgent):
         pipeline: RAGPipeline | None = context.get("pipeline")
         history = context.get("history")
         collection_id = context.get("collection_id")
+        answer_language = context.get("answer_language", "auto")
 
         if pipeline is None:
             yield {"type": "token", "text": "Tutor Agent 暂时不可用（RAG pipeline 未初始化）。"}
@@ -168,7 +182,10 @@ class TutorAgent(BaseAgent):
 
             # Step 2: Build prompt
             context_text = build_context_text(retrieval_result.chunks)
-            system_msg = TUTOR_SYSTEM_PROMPT.format(context=context_text)
+            system_msg = TUTOR_SYSTEM_PROMPT.format(
+                context=context_text,
+                language_instruction=answer_language_instruction(answer_language, query),
+            )
 
             messages = [{"role": "system", "content": system_msg}]
             if history:
@@ -219,7 +236,10 @@ class TutorAgent(BaseAgent):
             logger.exception("TutorAgent streaming failed, falling back to default RAG")
             try:
                 gen_result, _debug = await pipeline.query(
-                    query, history=history, collection_id=collection_id
+                    query,
+                    history=history,
+                    collection_id=collection_id,
+                    answer_language=answer_language,
                 )
                 yield {"type": "token", "text": gen_result.content}
                 yield {
@@ -244,12 +264,16 @@ class TutorAgent(BaseAgent):
         query: str,
         history: list[dict] | None,
         collection_id: str | None,
+        answer_language: str,
         error: Exception,
     ) -> AgentResponse:
         """Fall back to the standard RAG pipeline when the tutor-specific flow fails."""
         try:
             gen_result, _debug = await pipeline.query(
-                query, history=history, collection_id=collection_id
+                query,
+                history=history,
+                collection_id=collection_id,
+                answer_language=answer_language,
             )
             return AgentResponse(
                 content=gen_result.content,

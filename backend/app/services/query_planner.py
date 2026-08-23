@@ -20,6 +20,14 @@ _QUESTION_NOISE_RE = re.compile(
 _TRAILING_RELATION_RE = re.compile(
     r"(之间)?的?(区别|差异|关系|联系|特点|应用|任务|用途|定义|表现)$"
 )
+_COMPARISON_SUBJECTS_RE = re.compile(
+    r"^(?P<subjects>.+?)(?:之间)?(?:有什么|有何)?(?:区别|差异|异同)",
+    re.IGNORECASE,
+)
+_COMPARISON_DIMENSIONS_RE = re.compile(
+    r"从(?P<dimensions>.+?)(?:[一二三四五六七八九十\d]+个?)?方面(?:进行)?(?:比较|对比)",
+    re.IGNORECASE,
+)
 _MULTI_HOP_MARKERS = (
     "分别",
     "区别",
@@ -61,10 +69,30 @@ def _split_terms(text: str) -> list[str]:
     return terms
 
 
+def _decompose_comparison(query: str, max_subqueries: int) -> list[str]:
+    """Build one focused query per comparison subject with shared dimensions."""
+    subject_match = _COMPARISON_SUBJECTS_RE.search(query)
+    if not subject_match:
+        return []
+
+    subjects = _split_terms(subject_match.group("subjects"))
+    if len(subjects) < 2:
+        return []
+
+    dimension_match = _COMPARISON_DIMENSIONS_RE.search(query)
+    dimensions = _split_terms(dimension_match.group("dimensions")) if dimension_match else []
+    dimension_suffix = " ".join(dimensions)
+    return [f"{subject} {dimension_suffix}".strip() for subject in subjects[:max_subqueries]]
+
+
 def decompose_query(query: str, max_subqueries: int = 3) -> list[str]:
     """Split a compound query into focused retrieval subqueries when safe."""
     if max_subqueries <= 0 or not any(marker in query for marker in _MULTI_HOP_MARKERS):
         return []
+
+    comparison_queries = _decompose_comparison(query, max_subqueries)
+    if comparison_queries:
+        return comparison_queries
 
     candidates: list[str] = []
     if "分别" in query:
@@ -172,9 +200,18 @@ def retrieve_with_query_plan(
     collection_id: str | None = None,
     document_ids: list[str] | None = None,
     max_subqueries: int = 3,
+    additional_queries: list[str] | None = None,
 ) -> tuple[RetrievalResult, list[str]]:
-    """Run original + decomposed queries and return one fused retrieval result."""
-    retrieval_queries = build_retrieval_queries(query, max_subqueries=max_subqueries)
+    """Run original, translated, and decomposed queries, then fuse the rankings."""
+    retrieval_queries: list[str] = []
+    for seed_query in [query, *(additional_queries or [])]:
+        for planned_query in build_retrieval_queries(
+            seed_query,
+            max_subqueries=max_subqueries,
+        ):
+            normalized = planned_query.strip()
+            if normalized and normalized not in retrieval_queries:
+                retrieval_queries.append(normalized)
     results = [
         retriever.retrieve(
             retrieval_query,

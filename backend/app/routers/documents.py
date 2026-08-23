@@ -30,7 +30,7 @@ async def _trigger_kg_build(doc_id: str):
 
         with get_db() as conn:
             chunks = conn.execute(
-                "SELECT id, text FROM chunks WHERE doc_id = ?", (doc_id,)
+                "SELECT id, text FROM chunks WHERE doc_id = ? AND is_active = 1", (doc_id,)
             ).fetchall()
 
         if not chunks:
@@ -205,12 +205,32 @@ async def list_documents(collection_id: str | None = None):
 # ── Get chunks ─────────────────────────────────────────────
 
 
+@router.post("/{doc_id}/reindex", response_model=DocumentResponse)
+async def reindex_document(doc_id: str):
+    """Rebuild a document with the current parser, chunker, and embedding settings."""
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: get_rag_pipeline().reindex_document(doc_id),
+    )
+    if not result.get("success"):
+        error = result.get("error", "重建索引失败")
+        status_code = 404 if error == "Document not found" else 422
+        raise HTTPException(status_code=status_code, detail=error)
+
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+        return _row_to_response(row, conn=conn)
+
+
 @router.get("/{doc_id}/chunks", response_model=list[ChunkResponse])
 async def get_document_chunks(doc_id: str):
     """List all chunks for a document."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM chunks WHERE doc_id=? ORDER BY chunk_index",
+            "SELECT * FROM chunks WHERE doc_id=? AND is_active=1 ORDER BY chunk_index",
             (doc_id,),
         ).fetchall()
         return [
@@ -391,7 +411,7 @@ async def generate_summary(doc_id: str):
 
         # Get all chunks for this document
         chunks = conn.execute(
-            "SELECT text FROM chunks WHERE doc_id=? ORDER BY chunk_index",
+            "SELECT text FROM chunks WHERE doc_id=? AND is_active=1 ORDER BY chunk_index",
             (doc_id,),
         ).fetchall()
         if not chunks:

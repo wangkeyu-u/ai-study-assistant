@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   ChatSession,
   ChatMessage,
+  AnswerLanguage,
   Citation,
   Collection,
   DebugInfo,
@@ -42,6 +43,10 @@ export default function ChatPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<HistorySearchResult[]>([]);
   const [smartMode, setSmartMode] = useState(false);
+  const [answerLanguage, setAnswerLanguage] = useState<AnswerLanguage>(() => {
+    const saved = window.localStorage?.getItem('rag-answer-language');
+    return saved === 'zh' || saved === 'en' ? saved : 'auto';
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [scopedDocumentIds, setScopedDocumentIds] = useState<string[]>([]);
   const [scopeNames, setScopeNames] = useState<string[]>([]);
@@ -67,6 +72,10 @@ export default function ChatPage() {
       .then(setChatCollections)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    window.localStorage?.setItem('rag-answer-language', answerLanguage);
+  }, [answerLanguage]);
 
   useEffect(() => {
     const suggestedQuestion = searchParams.get('q');
@@ -161,14 +170,16 @@ export default function ChatPage() {
               message,
               currentSessionId || undefined,
               chatCollectionId,
-              handlers
+              handlers,
+              answerLanguage
             )
           : await sendChatMessage(
               message,
               currentSessionId || undefined,
               chatCollectionId,
               handlers,
-              scopedDocumentIds
+              scopedDocumentIds,
+              answerLanguage
             );
 
       setStreamingText('');
@@ -205,16 +216,8 @@ export default function ChatPage() {
   };
 
   const getAgentBadgeColor = (name: string) => {
-    const lower = name.toLowerCase();
-    if (lower.includes('tutor') || lower.includes('teacher'))
-      return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-    if (lower.includes('examiner') || lower.includes('quiz'))
-      return 'bg-amber-100 text-amber-700 border-amber-200';
-    if (lower.includes('summarizer') || lower.includes('summary'))
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (lower.includes('analyst') || lower.includes('analysis'))
-      return 'bg-purple-100 text-purple-700 border-purple-200';
-    return 'bg-slate-100 text-slate-700 border-slate-200';
+    void name;
+    return 'bg-blue-50 text-blue-700 border-blue-200';
   };
 
   const copyAnswer = async (message: MessageWithCitations) => {
@@ -323,8 +326,18 @@ export default function ChatPage() {
 
       {/* Chat area */}
       <div className="chat-stage flex-1 flex flex-col relative">
+        <header className="chat-topbar">
+          <div>
+            <h1>{t('chat.title')}</h1>
+            <p>{smartMode ? t('chat.deepAnswerActive') : t('chat.groundedAnswer')}</p>
+          </div>
+          <button onClick={handleNewChat} className="secondary-action">
+            <Icon name="plus" size={15} />
+            {t('chat.newChat')}
+          </button>
+        </header>
         {scopedDocumentIds.length > 0 && (
-          <div className="flex items-center gap-3 border-b border-indigo-100 bg-indigo-50/80 px-5 py-2.5 text-xs text-indigo-800">
+          <div className="flex items-center gap-3 border-b border-blue-100 bg-blue-50/80 px-5 py-2.5 text-xs text-blue-800">
             <span className="font-semibold">
               {scopedDocumentIds.length > 1 ? t('chat.compareScope') : t('chat.documentScope')}
             </span>
@@ -336,7 +349,7 @@ export default function ChatPage() {
                 setScopedDocumentIds([]);
                 setScopeNames([]);
               }}
-              className="rounded-md px-2 py-1 text-indigo-600 hover:bg-indigo-100"
+              className="rounded-md px-2 py-1 text-blue-700 hover:bg-blue-100"
             >
               {t('chat.clearScope')}
             </button>
@@ -531,9 +544,10 @@ export default function ChatPage() {
                 <span className="flex-1">{errorMessage}</span>
                 <button
                   onClick={() => setErrorMessage(null)}
-                  className="text-red-400 hover:text-red-600 transition-colors px-1"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-100 hover:text-red-700"
+                  aria-label={t('common.dismiss')}
                 >
-                  ✕
+                  <Icon name="x" size={14} />
                 </button>
               </div>
             )}
@@ -571,10 +585,36 @@ export default function ChatPage() {
                     <button
                       onClick={() => setSmartMode(!smartMode)}
                       className={`compact-switch ${smartMode ? 'is-on' : ''}`}
+                      aria-label={t('chat.deepAnswer')}
                       aria-pressed={smartMode}
                     >
                       <span />
                     </button>
+                  </div>
+                  <div className="answer-language-row">
+                    <span>
+                      <strong>{t('chat.answerLanguage')}</strong>
+                      <small>{t('chat.answerLanguageHint')}</small>
+                    </span>
+                    <div
+                      className="language-segment"
+                      role="group"
+                      aria-label={t('chat.answerLanguage')}
+                    >
+                      {(['auto', 'zh', 'en'] as AnswerLanguage[]).map((language) => (
+                        <button
+                          key={language}
+                          type="button"
+                          onClick={() => setAnswerLanguage(language)}
+                          className={answerLanguage === language ? 'is-active' : ''}
+                          aria-pressed={answerLanguage === language}
+                        >
+                          {t(
+                            `chat.answerLanguage${language === 'auto' ? 'Auto' : language.toUpperCase()}`
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <button className="debug-option" onClick={() => setShowDebug(!showDebug)}>
                     <Icon name="database" size={15} />
@@ -584,7 +624,12 @@ export default function ChatPage() {
               </details>
             </div>
             <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-zinc-400">
-              <span>{smartMode ? t('chat.deepAnswerActive') : t('chat.groundedAnswer')}</span>
+              <span>
+                {smartMode ? t('chat.deepAnswerActive') : t('chat.groundedAnswer')} ·{' '}
+                {t(
+                  `chat.answerLanguage${answerLanguage === 'auto' ? 'Auto' : answerLanguage.toUpperCase()}`
+                )}
+              </span>
               <span>{t('chat.enterToSend')}</span>
             </div>
           </div>

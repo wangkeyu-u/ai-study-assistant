@@ -14,17 +14,19 @@ def test_settings_defaults(monkeypatch):
             monkeypatch.delenv(key, raising=False)
     # Disable .env file loading to test true defaults
     s = Settings(_env_file=None)
-    assert s.chunk_size == 512
+    assert s.chunk_size == 384
     assert s.chunk_overlap == 64
-    assert s.top_k == 5
+    assert s.top_k == 8
     assert s.similarity_threshold == 0.3
     assert s.hybrid_search_enabled is True
-    assert s.retrieval_candidate_multiplier == 4
+    assert s.retrieval_candidate_multiplier == 5
     assert s.rrf_k == 60
     assert s.retrieval_confidence_gate_enabled is True
     assert s.vector_only_min_score == 0.46
     assert s.query_decomposition_enabled is True
     assert s.query_decomposition_max_subqueries == 3
+    assert s.cross_language_retrieval_enabled is True
+    assert s.hyde_fallback_enabled is True
     assert s.reranker_enabled is False
     assert s.reranker_model == "BAAI/bge-reranker-v2-m3"
     assert s.reranker_top_n == 12

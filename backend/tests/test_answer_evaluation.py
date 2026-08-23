@@ -63,6 +63,45 @@ def test_split_factual_sentences_ignores_headings_and_refusal():
     assert sentences == ["有效事实[1]。"]
 
 
+def test_citation_validator_understands_markdown_comparison_tables():
+    answer = """## 三类学习方式对比
+
+| 维度 | 监督学习 | 无监督学习 | 强化学习 |
+| --- | --- | --- | --- |
+| 训练数据 | 使用带标签数据[1] | 使用未标记数据[1] | 通过环境交互获得反馈[1] |
+| 应用 | 分类和回归[1] | 聚类和降维[1] | 机器人控制和自动驾驶[1] |
+
+**结论**
+三者的训练信号和适用任务不同[1]。"""
+
+    validation = validate_citation_coverage(answer, 1)
+
+    assert validation.valid is True
+    assert validation.factual_sentence_count == 3
+    assert validation.cited_sentence_count == 3
+
+
+def test_citation_validator_still_rejects_uncited_table_facts():
+    answer = """| 维度 | 监督学习 |
+| --- | --- |
+| 训练数据 | 使用带标签数据 |"""
+
+    validation = validate_citation_coverage(answer, 1)
+
+    assert validation.valid is False
+    assert validation.missing_citation_sentences == ["| 训练数据 | 使用带标签数据 |"]
+
+
+def test_citation_validator_recognizes_english_refusal():
+    validation = validate_citation_coverage(
+        "I could not find enough evidence in the current sources to answer this question.",
+        2,
+    )
+
+    assert validation.valid is True
+    assert validation.factual_sentence_count == 0
+
+
 def test_answer_quality_gate_reports_regressions():
     rows = [
         {

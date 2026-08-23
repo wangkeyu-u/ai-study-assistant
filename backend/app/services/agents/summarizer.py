@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator
 from app.db.database import get_db
 from app.services.agents.base import AgentResponse, BaseAgent
 from app.services.context_utils import build_context_text
+from app.services.language import answer_language_instruction
 from app.services.rag import RAGPipeline
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ SUMMARIZER_SYSTEM_PROMPT = """你是一位摘要专家（Summarizer Agent）。�
 3. 最后给出一个简短的"一句话总结"。
 4. 保持客观、准确，不要添加文档中没有的信息。
 5. 引用来源用 [编号] 标注。
+6. {language_instruction}
 
 文档内容：
 {context}"""
@@ -40,6 +42,7 @@ class SummarizerAgent(BaseAgent):
         pipeline: RAGPipeline | None = context.get("pipeline")
         collection_id = context.get("collection_id")
         doc_ids = context.get("doc_ids")
+        answer_language = context.get("answer_language", "auto")
 
         if pipeline is None:
             return AgentResponse(
@@ -64,7 +67,10 @@ class SummarizerAgent(BaseAgent):
             # Build context text
             context_text = build_context_text(chunks)
 
-            system_msg = SUMMARIZER_SYSTEM_PROMPT.format(context=context_text)
+            system_msg = SUMMARIZER_SYSTEM_PROMPT.format(
+                context=context_text,
+                language_instruction=answer_language_instruction(answer_language, query),
+            )
             messages = [
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": f"请为以下内容生成结构化摘要：{query}"},
@@ -92,7 +98,12 @@ class SummarizerAgent(BaseAgent):
         except Exception as e:
             logger.exception("SummarizerAgent failed, falling back to default RAG")
             return await self._fallback(
-                pipeline, query, context.get("history"), collection_id, error=e
+                pipeline,
+                query,
+                context.get("history"),
+                collection_id,
+                answer_language,
+                error=e,
             )
 
     async def process_stream(
@@ -107,6 +118,7 @@ class SummarizerAgent(BaseAgent):
         pipeline: RAGPipeline | None = context.get("pipeline")
         collection_id = context.get("collection_id")
         doc_ids = context.get("doc_ids")
+        answer_language = context.get("answer_language", "auto")
 
         if pipeline is None:
             yield {
@@ -138,7 +150,10 @@ class SummarizerAgent(BaseAgent):
 
             # Step 2: Build prompt
             context_text = build_context_text(chunks)
-            system_msg = SUMMARIZER_SYSTEM_PROMPT.format(context=context_text)
+            system_msg = SUMMARIZER_SYSTEM_PROMPT.format(
+                context=context_text,
+                language_instruction=answer_language_instruction(answer_language, query),
+            )
             messages = [
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": f"请为以下内容生成结构化摘要：{query}"},
@@ -187,7 +202,10 @@ class SummarizerAgent(BaseAgent):
             logger.exception("SummarizerAgent streaming failed, falling back to default RAG")
             try:
                 gen_result, _debug = await pipeline.query(
-                    query, history=context.get("history"), collection_id=collection_id
+                    query,
+                    history=context.get("history"),
+                    collection_id=collection_id,
+                    answer_language=answer_language,
                 )
                 yield {"type": "token", "text": gen_result.content}
                 yield {
@@ -237,7 +255,7 @@ class SummarizerAgent(BaseAgent):
         with get_db() as conn:
             placeholders = ",".join("?" for _ in doc_ids)
             rows = conn.execute(
-                f"SELECT id, text, doc_id, page_num, heading, chunk_index FROM chunks WHERE doc_id IN ({placeholders}) "
+                f"SELECT id, text, doc_id, page_num, heading, chunk_index FROM chunks WHERE is_active=1 AND doc_id IN ({placeholders}) "
                 f"ORDER BY chunk_index LIMIT 20",
                 doc_ids,
             ).fetchall()
@@ -260,12 +278,16 @@ class SummarizerAgent(BaseAgent):
         query: str,
         history: list[dict] | None,
         collection_id: str | None,
+        answer_language: str,
         error: Exception,
     ) -> AgentResponse:
         """Fall back to standard RAG pipeline on failure."""
         try:
             gen_result, _debug = await pipeline.query(
-                query, history=history, collection_id=collection_id
+                query,
+                history=history,
+                collection_id=collection_id,
+                answer_language=answer_language,
             )
             return AgentResponse(
                 content=gen_result.content,

@@ -6,8 +6,20 @@ import re
 from dataclasses import dataclass, field
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
-_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[。！？!?])|\n+")
-_REFUSAL_MARKERS = ("没有找到足够的信息", "无法根据现有资料", "资料不足")
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[。！？!?])")
+_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+")
+_MARKDOWN_RULE_RE = re.compile(r"^\s*(?:[-*_]\s*){3,}$")
+_TABLE_SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
+_EMPHASIZED_LABEL_RE = re.compile(r"^(?:\*\*|__)[^*_]+(?:\*\*|__)[:：]?$", re.DOTALL)
+_REFUSAL_MARKERS = (
+    "没有找到足够的信息",
+    "无法根据现有资料",
+    "资料不足",
+    "无法生成带有可靠引用",
+    "could not find enough evidence",
+    "could not produce an answer with reliable source citations",
+    "insufficient evidence",
+)
 
 
 @dataclass
@@ -29,7 +41,8 @@ class CitationValidationResult:
 
 def is_refusal(answer: str) -> bool:
     """Return whether an answer is an explicit insufficient-context refusal."""
-    return any(marker in answer for marker in _REFUSAL_MARKERS)
+    lowered = answer.lower()
+    return any(marker in lowered for marker in _REFUSAL_MARKERS)
 
 
 def citation_refs(text: str) -> list[int]:
@@ -37,15 +50,66 @@ def citation_refs(text: str) -> list[int]:
     return [int(value) for value in _CITATION_RE.findall(text)]
 
 
+def _is_table_row(line: str) -> bool:
+    return "|" in line and len(line.strip("| ").split("|")) >= 2
+
+
+def _is_table_separator(line: str) -> bool:
+    if not _is_table_row(line):
+        return False
+    cells = [cell.strip() for cell in line.strip("| ").split("|")]
+    return bool(cells) and all(_TABLE_SEPARATOR_CELL_RE.fullmatch(cell) for cell in cells)
+
+
+def _next_content_line(lines: list[str], start: int) -> str:
+    for line in lines[start:]:
+        if line.strip():
+            return line.strip()
+    return ""
+
+
 def split_factual_sentences(answer: str) -> list[str]:
-    """Split answer prose while excluding headings and explicit refusals."""
-    sentences = []
-    for part in _SENTENCE_BOUNDARY_RE.split(answer):
-        sentence = part.strip().lstrip("-•*# ")
-        content = _CITATION_RE.sub("", sentence).strip()
-        if len(content) < 4 or is_refusal(content):
+    """Split factual prose while ignoring Markdown structure and code blocks.
+
+    Models often format comparison answers as tables. Headings, table headers,
+    separators, and labels are presentation structure rather than factual claims;
+    counting them as uncited sentences causes valid grounded answers to be refused.
+    """
+    sentences: list[str] = []
+    lines = answer.splitlines()
+    in_code_block = False
+
+    for index, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if line.startswith("```"):
+            in_code_block = not in_code_block
             continue
-        sentences.append(sentence)
+        if not line or in_code_block:
+            continue
+        if _MARKDOWN_HEADING_RE.match(line) or _MARKDOWN_RULE_RE.fullmatch(line):
+            continue
+        if _EMPHASIZED_LABEL_RE.fullmatch(line):
+            continue
+        if _is_table_separator(line):
+            continue
+        if _is_table_row(line):
+            next_line = _next_content_line(lines, index + 1)
+            if _is_table_separator(next_line):
+                continue
+            parts = [line]
+        else:
+            # Lines such as "核心区别：" introduce the facts that follow.
+            if line.endswith(("：", ":")) and not citation_refs(line):
+                continue
+            parts = _SENTENCE_BOUNDARY_RE.split(line)
+
+        for part in parts:
+            sentence = part.strip().lstrip("-•* ")
+            sentence = re.sub(r"^\d+[.)、]\s*", "", sentence)
+            content = _CITATION_RE.sub("", sentence).strip().strip("|").strip()
+            if len(content) < 4 or is_refusal(content):
+                continue
+            sentences.append(sentence)
     return sentences
 
 

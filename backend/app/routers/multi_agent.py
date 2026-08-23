@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -42,6 +43,7 @@ class MultiAgentChatRequest(BaseModel):
     message: str
     session_id: str | None = None
     collection_id: str | None = None
+    answer_language: Literal["auto", "zh", "en"] = "auto"
 
 
 # ── SSE Streaming Endpoint ───────────────────────────────────────
@@ -79,6 +81,7 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
                 pipeline=pipeline,
                 history=history,
                 collection_id=request.collection_id,
+                answer_language=request.answer_language,
             ):
                 event_type = event.get("type")
 

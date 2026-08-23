@@ -142,6 +142,20 @@ class VectorStore:
             logger.warning("Error deleting chunks for doc %s: %s", doc_id, e)
         return 0
 
+    def delete_chunks(self, chunk_ids: list[str]) -> int:
+        """Delete an explicit set of chunk vectors, used by safe re-indexing."""
+        self._ensure_client()
+        unique_ids = list(dict.fromkeys(chunk_ids))
+        if not unique_ids:
+            return 0
+        try:
+            self._collection.delete(ids=unique_ids)
+            logger.info("Deleted %d explicit chunk vectors", len(unique_ids))
+            return len(unique_ids)
+        except Exception as error:
+            logger.warning("Error deleting explicit chunk vectors: %s", error)
+            return 0
+
     def update_document_collection(self, doc_id: str, collection_id: str | None) -> int:
         """Keep Chroma metadata in sync when a document changes collection."""
         self._ensure_client()

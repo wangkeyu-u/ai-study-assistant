@@ -69,7 +69,7 @@ async def generate_quiz(request: QuizGenerateRequest):
         doc_ids = [d["id"] for d in docs]
         placeholders = ",".join("?" for _ in doc_ids)
         chunks = conn.execute(
-            f"SELECT id, text, doc_id FROM chunks WHERE doc_id IN ({placeholders}) ORDER BY RANDOM() LIMIT 10",
+            f"SELECT id, text, doc_id FROM chunks WHERE is_active=1 AND doc_id IN ({placeholders}) ORDER BY RANDOM() LIMIT 10",
             doc_ids,
         ).fetchall()
 
@@ -237,7 +237,7 @@ async def submit_quiz(quiz_id: str, request: QuizSubmitRequest):
             sc_placeholders = ",".join("?" for _ in source_chunk_ids)
             doc_rows = conn.execute(
                 f"""SELECT d.id, c.id as chunk_id FROM documents d
-                    JOIN chunks c ON c.doc_id = d.id
+                    JOIN chunks c ON c.doc_id = d.id AND c.is_active = 1
                     WHERE c.id IN ({sc_placeholders})""",
                 source_chunk_ids,
             ).fetchall()
@@ -518,7 +518,9 @@ async def get_dashboard():
         total_docs = conn.execute(
             "SELECT COUNT(*) as c FROM documents WHERE status='ready'"
         ).fetchone()["c"]
-        total_chunks = conn.execute("SELECT COUNT(*) as c FROM chunks").fetchone()["c"]
+        total_chunks = conn.execute(
+            "SELECT COUNT(*) as c FROM chunks WHERE is_active=1"
+        ).fetchone()["c"]
         total_questions = conn.execute(
             "SELECT COUNT(*) as c FROM chat_messages WHERE role='user'"
         ).fetchone()["c"]

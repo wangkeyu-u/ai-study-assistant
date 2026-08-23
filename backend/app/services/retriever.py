@@ -40,12 +40,20 @@ _CJK_GENERIC_BOOST_TERMS = {
     "说明",
     "对应",
 }
+_CJK_NOISE_SPLIT_RE = re.compile(
+    r"(?:有什么区别|有何区别|什么样的|一个|两个|三个|四个|五个|六个|"
+    r"七个|八个|九个|十个|几个|以及|并且|同时|另外|还有|分别|"
+    r"请问|请从|哪些|哪个|哪类|如何|是否|怎样|多少|有什么|什么|"
+    r"比较|对比|区别|差异|关系|联系|方面|解释|说明|介绍|总结|"
+    r"这个|这些|资料|文档|教材|主要|使用|通过|和|与|及)"
+)
 _META_NEGATION_RE = re.compile(
     r"(不解释|不说明|不定义|不讨论|不会说明|只(?:是|列出|讨论|说明).{0,24}不|"
     r"does\s+not\s+(?:explain|define|discuss)|"
     r"do\s+not\s+(?:explain|define|discuss))",
     re.IGNORECASE,
 )
+_META_NEGATION_PENALTY = 0.25
 
 
 @dataclass
@@ -137,6 +145,17 @@ def extract_short_terms(query: str, max_terms: int = 8) -> list[str]:
     return terms[:max_terms]
 
 
+def extract_cjk_phrases(text: str) -> list[str]:
+    """Extract Chinese semantic phrases without crossing question connectors."""
+    phrases: list[str] = []
+    for run in _CJK_RUN_RE.findall(text):
+        for raw_phrase in _CJK_NOISE_SPLIT_RE.split(run):
+            phrase = raw_phrase.strip("的了呢吗请")
+            if len(phrase) >= 2 and phrase not in phrases:
+                phrases.append(phrase)
+    return phrases
+
+
 def extract_query_boost_terms(query: str, max_terms: int = 24) -> list[str]:
     """Extract distinctive query fragments used as a small ranking tie-breaker."""
     terms: list[str] = []
@@ -151,12 +170,14 @@ def extract_query_boost_terms(query: str, max_terms: int = 24) -> list[str]:
     for term in extract_short_terms(query):
         add(term)
 
-    for run in _CJK_RUN_RE.findall(query):
+    for phrase in extract_cjk_phrases(query):
+        if len(phrase) <= 8:
+            add(phrase)
         for width in (4, 3):
-            if len(run) < width:
+            if len(phrase) < width:
                 continue
-            for index in range(len(run) - width + 1):
-                term = run[index : index + width]
+            for index in range(len(phrase) - width + 1):
+                term = phrase[index : index + width]
                 if term in _CJK_GENERIC_BOOST_TERMS:
                     continue
                 if any(marker in term for marker in _CJK_QUERY_MARKERS):
@@ -363,6 +384,7 @@ class Retriever:
                             JOIN chunks c ON c.rowid = chunks_fts.rowid
                             JOIN documents d ON d.id = c.doc_id
                             WHERE chunks_fts MATCH ? AND d.status = 'ready'
+                                  AND c.is_active = 1
                                   {scope_clause}
                             ORDER BY bm25_score
                             LIMIT ?""",
@@ -385,7 +407,7 @@ class Retriever:
                             FROM chunks c
                             JOIN documents d ON d.id = c.doc_id
                             WHERE (COALESCE(c.heading, '') || CHAR(10) || c.text) REGEXP ?
-                                  AND d.status = 'ready'
+                                  AND d.status = 'ready' AND c.is_active = 1
                                   {scope_clause}
                             ORDER BY c.chunk_index
                             LIMIT ?""",
@@ -482,6 +504,6 @@ class Retriever:
         """Deprioritize meta-text that says it does not answer the topic."""
         for chunk in chunks:
             if _META_NEGATION_RE.search(chunk.text):
-                chunk.score *= 0.55
+                chunk.score *= _META_NEGATION_PENALTY
                 if chunk.lexical_score is not None:
-                    chunk.lexical_score *= 0.55
+                    chunk.lexical_score *= _META_NEGATION_PENALTY

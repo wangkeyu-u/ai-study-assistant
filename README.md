@@ -1,24 +1,3 @@
-# AI Study Assistant — 本地优先 RAG 学习助手 / Local-First RAG Study Assistant
-
-> 把 PDF、Markdown、笔记变成可搜索、带引用、可测验的个人知识库 —— 混合检索、多跳推理、引用验证、知识图谱。
->
-> Turns PDFs, Markdown, notes into a searchable, cited, quiz-ready personal knowledge base — hybrid retrieval, multi-hop reasoning, citation validation, knowledge graph.
-
-[![Python](https://img.shields.io/badge/Python-3.12-blue)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-RAG-009688)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-TypeScript-61DAFB)](https://react.dev/)
-[![Local First](https://img.shields.io/badge/Local--First-Privacy-success)]()
-
----
-
-## 项目简介（中文）
-
-AI Study Assistant 是一个本地优先的 RAG 学习平台，把 PDF、Markdown、文本笔记和学习材料变成可搜索、带引用、可测验的个人知识库。它不只是"和文档聊天"的 Demo——项目包含混合检索（ChromaDB 向量 + SQLite FTS5 关键词 + RRF 融合）、多跳查询规划、引用安全验证（句级引用检查，未引用的声明会被安全拒绝）、学习工作流（测验、错题、Anki 导出）、知识图谱（D3 力导向可视化）和调试面板。
-
-支持 OpenAI、Gemini、DeepSeek、通义千问、Moonshot、Mistral、智谱 GLM、xAI Grok、OpenRouter、Ollama 等多种 LLM 提供商，可从设置页一键切换。隔离检索评估基线：MRR 1.000、Hit@1 1.000、无答案准确率 1.000。
-
----
-
 # AI Study Assistant
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
@@ -34,6 +13,12 @@ It is designed as more than a chat-with-docs demo: the project includes hybrid r
 
 - **Production-minded RAG pipeline**: ChromaDB vector retrieval, SQLite FTS5 keyword retrieval, Reciprocal Rank Fusion, confidence gating, and no-answer handling.
 - **Multi-hop retrieval**: compound questions are decomposed into focused subqueries, retrieved independently, and fused with RRF to improve evidence coverage.
+- **Cross-language retrieval**: the active corpus language is detected automatically; Chinese questions can retrieve English sources (and vice versa) through translated multi-query retrieval, while answers can be forced to Chinese or English independently.
+- **Structure-aware chunking**: PDF typography, Markdown headings, paragraphs, lists, sentence boundaries, clean overlap, and heading-enriched embeddings produce more coherent evidence units.
+- **Citation-safe re-indexing**: existing documents can be rebuilt with the latest parser, chunker, and embedding settings while historical answers keep their original citation targets.
+- **Intent-aware RAG planning**: questions are classified as comparison, summary, process, definition, evidence-first, or general Q&A so retrieval diagnostics and answer structure stay aligned.
+- **Context optimization layer**: retrieved candidates are compressed with intent-aware MMR, document coverage preservation, character budgeting, adjacent-chunk expansion, and a multilingual coverage gate that refuses weak vector-only context before spending LLM tokens.
+- **Guarded HyDE fallback**: when normal and translated retrieval both fail, a hypothetical passage can recover semantic recall; generated HyDE text is never treated as answer evidence and cannot satisfy the final coverage gate by itself.
 - **Citation safety**: generated answers are checked with sentence-level citation validation; uncited or out-of-range factual claims are replaced with a safe refusal.
 - **Measurable quality gates**: isolated retrieval eval, hard-negative eval, multi-hop recall eval, and answer/citation quality eval are built into the repo.
 - **Learning workflow**: upload documents, ask cited questions, generate quizzes, review mistakes, export Anki cards, and explore a concept graph.
@@ -45,45 +30,45 @@ It is designed as more than a chat-with-docs demo: the project includes hybrid r
 
 Current isolated hybrid retrieval baseline:
 
-| Metric | Value |
-|---|---:|
-| MRR | 1.000 |
-| Hit@1 | 1.000 |
-| Hit@3 | 1.000 |
+| Metric             | Value |
+| ------------------ | ----: |
+| MRR                | 1.000 |
+| Hit@1              | 1.000 |
+| Hit@3              | 1.000 |
 | No-answer accuracy | 1.000 |
-| HardNeg@1 | 1.000 |
+| HardNeg@1          | 1.000 |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Upload PDF / TXT / MD] --> B[Parse and Chunk]
+    A[Upload PDF / TXT / MD] --> B[Structure-aware Parse and Chunk]
     B --> C[Embedding]
     C --> D[(ChromaDB Vector Store)]
     B --> E[(SQLite Metadata + FTS5)]
-    Q[User Question] --> R[Rewrite / Query Decomposition]
+    Q[User Question] --> R[Rewrite / Intent / Translation / Decomposition]
     R --> S[Hybrid Retrieval]
     D --> S
     E --> S
-    S --> T[RRF Fusion + Confidence Gate]
-    T --> G[LLM Generation]
+    S --> T[RRF + MMR + Neighbor Expansion + Confidence Gate]
+    T --> G[Intent-aware LLM Generation]
     G --> V[Sentence-level Citation Validation]
     V --> U[Answer + Sources + Debug Panel]
 ```
 
 ## Features
 
-| Area | Capabilities |
-|---|---|
-| Document management | PDF/TXT/MD upload, note creation, tags, AI summaries, knowledge-base collections |
-| RAG chat | cited answers, exact-document Q&A, multi-document comparison, multi-turn query rewriting, multi-hop retrieval, source previews, original-source links, chat history search |
-| Retrieval quality | vector + FTS5 hybrid search, RRF ranking, hard-negative evaluation, confidence gating |
-| Citation safety | explicit citation extraction, sentence-level citation completeness checks, safe refusal fallback |
-| Quiz workflow | LLM-generated quizzes, online answering, mistake records, spaced review, Anki export |
-| Dashboard | document stats, quiz stats, weak-point tracking, recent activity |
-| Knowledge graph | concept extraction, relationship mining, D3 force-directed visualization |
-| Multi-agent mode | supervisor routing to Tutor, Examiner, and Summarizer agents |
-| Engineering tools | backup/restore, Markdown export, Debug Panel, offline evaluation scripts |
+| Area                | Capabilities                                                                                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Document management | PDF/TXT/MD upload, note creation, tags, AI summaries, knowledge-base collections, citation-safe index rebuilding                                                                                                                                     |
+| RAG chat            | cited answers, Chinese/English answer control, cross-language document Q&A, exact-document scope, multi-document comparison, multi-turn rewriting, intent-aware answer shaping, context compression, safe refusal, source previews, original-source links |
+| Retrieval quality   | structure-aware chunks, heading-enriched embeddings, vector + FTS5 hybrid search, translated multi-query retrieval, query decomposition, RRF fusion, optional cross-encoder reranking, guarded HyDE fallback, MMR selection, neighbor expansion, confidence gating |
+| Citation safety     | explicit citation extraction, sentence-level citation completeness checks, safe refusal fallback                                                                                                                                                     |
+| Quiz workflow       | LLM-generated quizzes, online answering, mistake records, spaced review, Anki export                                                                                                                                                                 |
+| Dashboard           | document stats, quiz stats, weak-point tracking, recent activity                                                                                                                                                                                     |
+| Knowledge graph     | concept extraction, relationship mining, D3 force-directed visualization                                                                                                                                                                             |
+| Multi-agent mode    | supervisor routing to Tutor, Examiner, and Summarizer agents                                                                                                                                                                                         |
+| Engineering tools   | backup/restore, Markdown export, Debug Panel, offline evaluation scripts                                                                                                                                                                             |
 
 ## Tech Stack
 
@@ -151,9 +136,22 @@ Open:
 http://localhost:5173
 ```
 
+If another local app already uses port 8000, start the backend on a free port and point
+the Vite proxy at it:
+
+```bash
+cd backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+
+cd ../frontend
+ASA_BACKEND_URL=http://127.0.0.1:8001 npm run dev -- --port 5174
+```
+
 For a guided product demo, open **Documents** and click **Load Interview Demo**. The app
 indexes a built-in production RAG note and presents three questions that showcase cited
 retrieval, multi-hop reasoning, and no-answer safety behavior.
+
+For interview preparation, see [docs/INTERVIEW_PLAYBOOK.md](docs/INTERVIEW_PLAYBOOK.md).
 
 ## Local Models
 
@@ -188,19 +186,19 @@ ASA_OLLAMA_BASE_URL=http://localhost:11434/v1
 
 The backend uses OpenAI-compatible chat completions wherever possible. You can switch providers from the Settings page or by editing `.env`.
 
-| Provider | Example models | Key env |
-|---|---|---|
-| OpenAI | `gpt-5.5`, `gpt-5.4`, `gpt-4.1`, `gpt-4o-mini` | `OPENAI_API_KEY` |
-| Google Gemini | `gemini-2.5-pro`, `gemini-2.5-flash` | `GEMINI_API_KEY` |
-| DeepSeek | `deepseek-v4-flash`, `deepseek-chat`, `deepseek-reasoner` | `DEEPSEEK_API_KEY` |
-| Alibaba Qwen / DashScope | `qwen-max`, `qwen-plus`, `qwen-turbo` | `DASHSCOPE_API_KEY` |
-| Moonshot Kimi | `moonshot-v1-128k`, `moonshot-v1-32k` | `MOONSHOT_API_KEY` |
-| Mistral AI | `mistral-large-latest`, `mistral-small-latest`, `codestral-latest` | `MISTRAL_API_KEY` |
-| Zhipu / Z.ai GLM | `glm-4.5`, `glm-4.5-air`, `glm-4-plus` | `ZHIPU_API_KEY` |
-| xAI Grok | `grok-4.3`, `grok-build-0.1`, `grok-4` | `XAI_API_KEY` |
-| OpenRouter | Claude, Gemini, Grok, Llama, Mistral and more | `OPENROUTER_API_KEY` |
-| Ollama | `qwen2.5:7b`, `llama3.1:8b`, `deepseek-r1:7b` | local |
-| Custom OpenAI-compatible | any compatible model ID | `ASA_LLM_API_KEY` |
+| Provider                 | Example models                                                     | Key env              |
+| ------------------------ | ------------------------------------------------------------------ | -------------------- |
+| OpenAI                   | `gpt-5.5`, `gpt-5.4`, `gpt-4.1`, `gpt-4o-mini`                     | `OPENAI_API_KEY`     |
+| Google Gemini            | `gemini-2.5-pro`, `gemini-2.5-flash`                               | `GEMINI_API_KEY`     |
+| DeepSeek                 | `deepseek-v4-flash`, `deepseek-chat`, `deepseek-reasoner`          | `DEEPSEEK_API_KEY`   |
+| Alibaba Qwen / DashScope | `qwen-max`, `qwen-plus`, `qwen-turbo`                              | `DASHSCOPE_API_KEY`  |
+| Moonshot Kimi            | `moonshot-v1-128k`, `moonshot-v1-32k`                              | `MOONSHOT_API_KEY`   |
+| Mistral AI               | `mistral-large-latest`, `mistral-small-latest`, `codestral-latest` | `MISTRAL_API_KEY`    |
+| Zhipu / Z.ai GLM         | `glm-4.5`, `glm-4.5-air`, `glm-4-plus`                             | `ZHIPU_API_KEY`      |
+| xAI Grok                 | `grok-4.3`, `grok-build-0.1`, `grok-4`                             | `XAI_API_KEY`        |
+| OpenRouter               | Claude, Gemini, Grok, Llama, Mistral and more                      | `OPENROUTER_API_KEY` |
+| Ollama                   | `qwen2.5:7b`, `llama3.1:8b`, `deepseek-r1:7b`                      | local                |
+| Custom OpenAI-compatible | any compatible model ID                                            | `ASA_LLM_API_KEY`    |
 
 ## Project Structure
 

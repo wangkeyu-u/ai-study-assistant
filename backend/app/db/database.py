@@ -28,6 +28,13 @@ def init_db(db_path: str) -> None:
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Preserve historical citation targets when documents are re-indexed.
+    try:
+        conn.execute("ALTER TABLE chunks ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     # Populate newly introduced external-content FTS indexes exactly once.
     # Changing the marker version forces a rebuild after future tokenizer or
     # schema changes without adding startup cost for every launch.
@@ -122,6 +129,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     page_num      INTEGER,
     heading       TEXT,
     token_count   INTEGER NOT NULL,
+    is_active     INTEGER NOT NULL DEFAULT 1,
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks(doc_id);

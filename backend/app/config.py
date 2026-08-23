@@ -41,20 +41,30 @@ class Settings(BaseSettings):
     openai_base_url: str = ""  # custom base URL (e.g. DeepSeek)
 
     # ── RAG ────────────────────────────────────────────────
-    chunk_size: int = 512  # target tokens per chunk
+    chunk_size: int = 384  # focused chunks improve retrieval precision
     chunk_overlap: int = 64  # overlap tokens
-    top_k: int = 5  # retrieval top-k
+    top_k: int = 8  # final retrieval top-k
     similarity_threshold: float = 0.3  # min similarity to include
     hybrid_search_enabled: bool = True
-    retrieval_candidate_multiplier: int = 4
+    retrieval_candidate_multiplier: int = 5
     rrf_k: int = 60
     retrieval_confidence_gate_enabled: bool = True
     vector_only_min_score: float = 0.46
     query_decomposition_enabled: bool = True
     query_decomposition_max_subqueries: int = 3
+    cross_language_retrieval_enabled: bool = True
+    hyde_fallback_enabled: bool = True
     reranker_enabled: bool = False
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     reranker_top_n: int = 12
+    context_candidate_top_k: int = 20
+    context_max_chunks: int = 8
+    context_max_chars: int = 12000
+    context_mmr_lambda: float = 0.72
+    context_min_coverage_score: float = 0.2
+    context_neighbor_window: int = 1
+    context_max_neighbors: int = 2
+    intent_aware_prompt_enabled: bool = True
 
     # ── Upload ─────────────────────────────────────────────
     max_upload_size_mb: int = 50

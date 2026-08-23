@@ -53,6 +53,35 @@ class TestChunkText:
         chunks = chunker.chunk_text("这是一段测试文本，应该有足够的长度。")
         assert all(c.token_count > 0 for c in chunks)
 
+    def test_infers_numbered_heading_without_embedding_it_in_source_text(self):
+        chunker = TextChunker(chunk_size=80, chunk_overlap=10)
+        chunks = chunker.chunk_text(
+            "1.2 Retrieval Pipeline\nDense and lexical search are fused with RRF."
+        )
+
+        assert chunks[0].heading == "1.2 Retrieval Pipeline"
+        assert chunks[0].text == "Dense and lexical search are fused with RRF."
+        assert chunks[0].embedding_text.startswith("1.2 Retrieval Pipeline\n")
+
+    def test_overlap_keeps_complete_sentences(self):
+        chunker = TextChunker(chunk_size=20, chunk_overlap=6)
+        text = "第一句介绍系统。第二句解释检索流程。第三句描述答案生成。第四句说明引用校验。"
+
+        chunks = chunker.chunk_text(text)
+
+        assert len(chunks) >= 2
+        assert all(chunk.text[0] not in "，。；：" for chunk in chunks)
+        assert all(chunk.token_count <= 20 for chunk in chunks)
+
+    def test_joins_english_pdf_line_wraps_and_repairs_hyphenation(self):
+        chunks = TextChunker(chunk_size=80).chunk_text(
+            "Retrieval aug-\nmented generation combines search\nwith language models."
+        )
+
+        assert chunks[0].text == (
+            "Retrieval augmented generation combines search with language models."
+        )
+
 
 class TestChunkSegments:
     """Tests for chunk_segments method."""

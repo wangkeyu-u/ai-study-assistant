@@ -7,6 +7,7 @@ import {
   Collection,
   uploadDocument,
   deleteDocument,
+  reindexDocument,
   createNote,
   getChunks,
   addTag,
@@ -63,6 +64,7 @@ export default function Documents() {
   const [tagInput, setTagInput] = useState<{ [docId: string]: string }>({});
   const [summaries, setSummaries] = useState<{ [docId: string]: Summary }>({});
   const [generatingSummary, setGeneratingSummary] = useState<string | null>(null);
+  const [reindexingDocument, setReindexingDocument] = useState<string | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [showNewCollectionModal, setShowNewCollectionModal] = useState(false);
@@ -155,6 +157,23 @@ export default function Documents() {
       setChunks(data);
     } catch {
       setChunks([]);
+    }
+  };
+
+  const handleReindex = async (docId: string) => {
+    if (!confirm(t('documents.confirmReindex'))) return;
+    setReindexingDocument(docId);
+    setError(null);
+    try {
+      await reindexDocument(docId);
+      await fetchDocs(selectedCollection);
+      if (selectedDoc === docId) {
+        setChunks(await getChunks(docId));
+      }
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, t('documents.error_reindex')));
+    } finally {
+      setReindexingDocument(null);
     }
   };
 
@@ -448,7 +467,7 @@ export default function Documents() {
         </div>
         {error && docs.length > 0 && (
           <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
-            <span className="text-red-400">⚠️</span>
+            <Icon name="offline" size={16} className="text-red-500" />
             {error}
           </div>
         )}
@@ -479,10 +498,10 @@ export default function Documents() {
           </div>
         )}
         {docs.some((doc) => doc.filename === DEMO_DOCUMENT_FILENAME) && (
-          <div className="mb-5 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-cyan-50 p-5 shadow-sm">
+          <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50/60 p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">
+                <p className="text-xs font-semibold text-blue-700">
                   {t('documents.interviewDemo')}
                 </p>
                 <h3 className="mt-1 text-base font-semibold text-slate-800">
@@ -490,18 +509,18 @@ export default function Documents() {
                 </h3>
                 <p className="mt-1 text-sm text-slate-500">{t('documents.demoHint')}</p>
               </div>
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+              <span className="rounded-md bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
                 {t('documents.readyToAsk')}
               </span>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-2">
               {DEMO_QUESTIONS.map((item, index) => (
                 <button
                   key={item.kind}
                   onClick={() => openQuestion(t(item.questionKey))}
-                  className="group rounded-xl border border-white bg-white/90 p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
+                  className="group rounded-lg border border-blue-100 bg-white p-3 text-left transition-colors hover:border-blue-300"
                 >
-                  <span className="text-[11px] font-medium text-indigo-500">
+                  <span className="text-[11px] font-medium text-blue-600">
                     {t(`documents.demoQuestion${index + 1}`)}
                   </span>
                   <p className="mt-1 text-sm leading-relaxed text-slate-700 group-hover:text-indigo-700">
@@ -583,7 +602,7 @@ export default function Documents() {
                         checked={compareDocumentIds.includes(doc.id)}
                         onChange={() => toggleCompareDocument(doc.id)}
                         aria-label={t('documents.selectForCompare', { filename: doc.filename })}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="document-compare-checkbox rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     )}
                     <div className="grid h-10 w-10 place-items-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-600">
@@ -627,17 +646,28 @@ export default function Documents() {
                       </summary>
                       <div className="context-menu-popover">
                         {doc.status === 'ready' && (
-                          <button
-                            onClick={() => handleGenerateSummary(doc.id)}
-                            disabled={generatingSummary === doc.id}
-                          >
-                            <Icon name="sparkles" size={15} />
-                            {generatingSummary === doc.id
-                              ? t('common.generating')
-                              : summaries[doc.id]
-                                ? t('documents.reSummarize')
-                                : t('documents.aiSummary')}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleGenerateSummary(doc.id)}
+                              disabled={generatingSummary === doc.id}
+                            >
+                              <Icon name="sparkles" size={15} />
+                              {generatingSummary === doc.id
+                                ? t('common.generating')
+                                : summaries[doc.id]
+                                  ? t('documents.reSummarize')
+                                  : t('documents.aiSummary')}
+                            </button>
+                            <button
+                              onClick={() => handleReindex(doc.id)}
+                              disabled={reindexingDocument === doc.id}
+                            >
+                              <Icon name="refresh" size={15} />
+                              {reindexingDocument === doc.id
+                                ? t('documents.reindexing')
+                                : t('documents.reindex')}
+                            </button>
+                          </>
                         )}
                         <button onClick={() => handleViewChunks(doc.id)}>
                           <Icon name="layers" size={15} />
@@ -667,9 +697,10 @@ export default function Documents() {
                         {tag}
                         <button
                           onClick={() => handleRemoveTag(doc.id, tag)}
-                          className="opacity-60 hover:opacity-100 transition-opacity"
+                          className="document-tag-remove opacity-60 transition-opacity hover:opacity-100"
+                          aria-label={t('documents.removeTag', { tag })}
                         >
-                          ×
+                          <Icon name="x" size={11} />
                         </button>
                       </span>
                     ))}
@@ -728,7 +759,7 @@ export default function Documents() {
 
                 {/* Chunks preview */}
                 {selectedDoc === doc.id && chunks.length > 0 && (
-                  <div className="border-t border-gray-100 p-4 bg-gradient-to-b from-gray-50 to-white">
+                  <div className="border-t border-gray-100 bg-gray-50 p-4">
                     <p className="text-xs text-gray-500 mb-3 font-medium">
                       {t('documents.chunksCount', { count: chunks.length })}
                     </p>

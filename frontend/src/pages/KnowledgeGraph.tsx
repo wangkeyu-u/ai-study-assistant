@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import * as d3 from 'd3';
 import { knowledgeGraphApi } from '../api';
 import { useTranslation } from 'react-i18next';
+import Icon from '../components/Icon';
 
 interface GraphNode {
   id: string;
@@ -257,29 +258,27 @@ export default function KnowledgeGraph() {
   }, [graphData, renderGraph]);
 
   return (
-    <div className="spell-page h-full flex">
+    <div className="product-page knowledge-graph-page h-full flex">
       {/* Main graph area */}
       <div className="flex-1 relative graph-grid-bg">
         {/* Toolbar */}
-        <div className="absolute top-4 left-4 z-10 flex gap-2">
-          <button
-            onClick={buildGraph}
-            disabled={building}
-            className="spell-button px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-500 text-white rounded-lg hover:from-blue-700 hover:to-indigo-600 disabled:from-gray-400 disabled:to-gray-400 transition-all duration-200 shadow-sm hover:shadow-md text-sm font-medium"
-          >
-            {building ? t('common.building') : t('knowledgeGraph.buildGraph')}
-          </button>
-          <button
-            onClick={loadGraph}
-            disabled={loading}
-            className="px-4 py-2.5 bg-white text-gray-700 rounded-lg hover:bg-gray-50 disabled:bg-gray-100 transition-all duration-200 shadow-sm border border-gray-200 text-sm font-medium"
-          >
-            {loading ? t('common.loading') : t('common.refresh')}
-          </button>
+        <div className="graph-toolbar">
+          <div>
+            <h1>{t('knowledgeGraph.title')}</h1>
+            <p>{t('knowledgeGraph.notBuiltHint')}</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={buildGraph} disabled={building} className="primary-action">
+              {building ? t('common.building') : t('knowledgeGraph.buildGraph')}
+            </button>
+            <button onClick={loadGraph} disabled={loading} className="secondary-action">
+              {loading ? t('common.loading') : t('common.refresh')}
+            </button>
+          </div>
         </div>
 
         {message && (
-          <div className="absolute top-4 right-4 z-10 bg-white p-3 rounded-xl shadow-lg border border-gray-100 max-w-md">
+          <div className="graph-message">
             <p className="text-sm text-gray-700">{message}</p>
           </div>
         )}
@@ -288,8 +287,8 @@ export default function KnowledgeGraph() {
         {isEmpty && !loading && (
           <div className="absolute inset-0 flex items-center justify-center z-0">
             <div className="text-center max-w-md">
-              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-2xl flex items-center justify-center shadow-sm">
-                <span className="text-4xl">🔗</span>
+              <div className="product-state-icon mx-auto mb-5">
+                <Icon name="graph" size={24} />
               </div>
               <p className="text-gray-700 font-semibold text-lg mb-2">
                 {t('knowledgeGraph.notBuilt')}
@@ -297,14 +296,14 @@ export default function KnowledgeGraph() {
               <p className="text-sm text-gray-400 mb-6 leading-relaxed">
                 {t('knowledgeGraph.notBuiltHint')}
               </p>
-              <div className="bg-white rounded-xl border border-gray-200 p-5 text-left shadow-sm">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              <div className="graph-empty-steps">
+                <p className="text-xs font-semibold text-gray-500 mb-3">
                   {t('knowledgeGraph.steps')}
                 </p>
                 <div className="space-y-3">
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-bold text-blue-600">1</span>
+                    <div className="graph-step-icon">
+                      <Icon name="upload" size={15} />
                     </div>
                     <div>
                       <p className="text-sm text-gray-700 font-medium">
@@ -314,8 +313,8 @@ export default function KnowledgeGraph() {
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-bold text-blue-600">2</span>
+                    <div className="graph-step-icon">
+                      <Icon name="clock" size={15} />
                     </div>
                     <div>
                       <p className="text-sm text-gray-700 font-medium">
@@ -325,8 +324,8 @@ export default function KnowledgeGraph() {
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-bold text-blue-600">3</span>
+                    <div className="graph-step-icon">
+                      <Icon name="graph" size={15} />
                     </div>
                     <div>
                       <p className="text-sm text-gray-700 font-medium">
@@ -340,7 +339,7 @@ export default function KnowledgeGraph() {
               <button
                 onClick={buildGraph}
                 disabled={building}
-                className="mt-6 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:from-blue-700 hover:to-blue-600 disabled:opacity-50 transition-all duration-200 shadow-sm hover:shadow-md text-sm font-medium"
+                className="primary-action mx-auto mt-6"
               >
                 {building ? t('common.building') : t('knowledgeGraph.buildNow')}
               </button>

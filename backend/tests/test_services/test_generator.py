@@ -106,6 +106,67 @@ class TestCitationValidation:
         assert result.content == "这是有引用的事实[1]。"
 
     @pytest.mark.asyncio
+    async def test_generate_repairs_citations_before_refusing(self, generator, sample_chunks):
+        generator.client.chat.completions.create = AsyncMock(
+            side_effect=[
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(message=SimpleNamespace(content="这是缺少引用的事实。"))
+                    ],
+                    usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+                ),
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(message=SimpleNamespace(content="这是修复后的事实[1]。"))
+                    ],
+                    usage=SimpleNamespace(prompt_tokens=20, completion_tokens=6, total_tokens=26),
+                ),
+            ]
+        )
+
+        result = await generator.generate("测试问题", sample_chunks)
+
+        assert result.citation_validation_failed is False
+        assert result.content == "这是修复后的事实[1]。"
+        assert result.citations[0].chunk_id == "c1"
+        assert result.total_tokens == 41
+
+    @pytest.mark.asyncio
+    async def test_generate_salvages_cited_facts_when_repair_leaves_uncited_summary(
+        self, generator, sample_chunks
+    ):
+        generator.client.chat.completions.create = AsyncMock(
+            side_effect=[
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(message=SimpleNamespace(content="这是缺少引用的事实。"))
+                    ],
+                    usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+                ),
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content=(
+                                    "第一条可靠事实[1]。这是一句漏引的总结。第二条可靠事实[2]。"
+                                )
+                            )
+                        )
+                    ],
+                    usage=SimpleNamespace(prompt_tokens=20, completion_tokens=8, total_tokens=28),
+                ),
+            ]
+        )
+
+        result = await generator.generate("测试问题", sample_chunks)
+
+        assert result.citation_validation_failed is False
+        assert "漏引的总结" not in result.content
+        assert "第一条可靠事实[1]。" in result.content
+        assert "第二条可靠事实[2]。" in result.content
+        assert [citation.chunk_id for citation in result.citations] == ["c1", "c2"]
+
+    @pytest.mark.asyncio
     async def test_generate_stream_buffers_until_citation_validation(
         self, generator, sample_chunks
     ):
@@ -178,6 +239,22 @@ class TestBuildMessages:
         messages = generator._build_messages("当前问题", sample_chunks, history)
         # system + 10 (capped) + 1 current
         assert len(messages) == 12
+
+    def test_answer_language_instruction_is_explicit(self, generator, sample_chunks):
+        messages = generator._build_messages(
+            "这个概念是什么？",
+            sample_chunks,
+            answer_language="en",
+        )
+
+        assert "Answer entirely in English" in messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_no_context_message_uses_requested_language(generator):
+    result = await generator.generate("这个概念是什么？", [], answer_language="en")
+
+    assert result.content.startswith("I could not find enough evidence")
 
 
 class TestBuildContextText:

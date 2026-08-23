@@ -53,12 +53,30 @@ class TestChatEndpoint:
             history=[],
             collection_id=None,
             document_ids=["doc-a", "doc-b"],
+            answer_language="auto",
         )
 
     def test_chat_limits_document_scope(self, test_app):
         response = test_app.post(
             "/api/chat",
             json={"message": "对比", "document_ids": [f"doc-{index}" for index in range(6)]},
+        )
+
+        assert response.status_code == 422
+
+    def test_chat_passes_answer_language_to_pipeline(self, test_app, mock_rag_pipeline):
+        response = test_app.post(
+            "/api/chat",
+            json={"message": "用英文回答", "answer_language": "en"},
+        )
+
+        assert response.status_code == 200
+        assert mock_rag_pipeline.query.await_args.kwargs["answer_language"] == "en"
+
+    def test_chat_rejects_unknown_answer_language(self, test_app):
+        response = test_app.post(
+            "/api/chat",
+            json={"message": "测试", "answer_language": "fr"},
         )
 
         assert response.status_code == 422

@@ -13,6 +13,7 @@ import {
   Document,
   getErrorMessage,
 } from '../api';
+import Icon, { IconName } from '../components/Icon';
 
 type Tab = 'generate' | 'wrong' | 'anki';
 
@@ -121,48 +122,42 @@ export default function QuizPage() {
   const answeredCount = Object.keys(answers).length;
   const progressPercent = quiz ? Math.round((answeredCount / quiz.total_count) * 100) : 0;
 
-  const tabLabels: Record<Tab, { label: string; icon: string }> = {
-    generate: { label: t('quiz.tab_generate'), icon: '✍️' },
-    wrong: { label: t('quiz.tab_wrong'), icon: '📕' },
-    anki: { label: t('quiz.tab_anki'), icon: '📦' },
+  const tabLabels: Record<Tab, { label: string; icon: IconName }> = {
+    generate: { label: t('quiz.tab_generate'), icon: 'quiz' },
+    wrong: { label: t('quiz.tab_wrong'), icon: 'note' },
+    anki: { label: t('quiz.tab_anki'), icon: 'database' },
   };
 
   return (
-    <div className="spell-page h-full flex flex-col">
-      <div className="page-header p-6 border-b border-gray-200 bg-white">
-        <h2 className="text-xl font-semibold text-gray-800">{t('quiz.title')}</h2>
-        <p className="text-sm text-gray-500 mt-1">{t('quiz.subtitle')}</p>
-      </div>
+    <div className="product-page quiz-page h-full flex flex-col">
+      <header className="product-page-header">
+        <h1>{t('quiz.title')}</h1>
+        <p>{t('quiz.subtitle')}</p>
+      </header>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 bg-white px-6">
-        {(Object.entries(tabLabels) as [Tab, { label: string; icon: string }][]).map(
+      <div className="product-tabs">
+        {(Object.entries(tabLabels) as [Tab, { label: string; icon: IconName }][]).map(
           ([tabKey, { label, icon }]) => (
             <button
               key={tabKey}
               onClick={() => setTab(tabKey)}
-              className={`px-4 py-3 text-sm border-b-2 transition-all duration-200 flex items-center gap-1.5 ${
-                tab === tabKey
-                  ? 'border-blue-600 text-blue-700 font-medium'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+              className={tab === tabKey ? 'is-active' : ''}
             >
-              <span>{icon}</span>
+              <Icon name={icon} size={16} />
               {label}
               {tabKey === 'wrong' && wrongAnswers.length > 0 && (
-                <span className="ml-1 bg-red-100 text-red-600 text-xs px-1.5 py-0.5 rounded-full font-medium">
-                  {wrongAnswers.length}
-                </span>
+                <span className="tab-count">{wrongAnswers.length}</span>
               )}
             </button>
           )
         )}
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="product-page-content flex-1 overflow-auto">
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
-            <span>⚠️</span>
+            <Icon name="offline" size={17} />
             {error}
           </div>
         )}
@@ -171,7 +166,7 @@ export default function QuizPage() {
         {tab === 'generate' && (
           <div className="space-y-6">
             {/* Config */}
-            <div className="spell-card bg-white rounded-xl border border-gray-200 p-5">
+            <div className="product-section quiz-config">
               <h3 className="font-medium text-gray-800 mb-3">{t('quiz.selectScope')}</h3>
               <div className="flex flex-wrap gap-2 mb-4">
                 {docs.map((d) => (
@@ -208,7 +203,7 @@ export default function QuizPage() {
                 <button
                   onClick={handleGenerate}
                   disabled={loading || docs.length === 0}
-                  className="ml-auto px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg text-sm hover:from-blue-700 hover:to-blue-600 disabled:opacity-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+                  className="primary-action ml-auto"
                 >
                   {loading ? t('common.generating') : t('quiz.generateQuiz')}
                 </button>
@@ -219,7 +214,7 @@ export default function QuizPage() {
             {quiz && !result && (
               <div className="space-y-4">
                 {/* Progress Bar */}
-                <div className="spell-card bg-white rounded-xl border border-gray-200 p-4">
+                <div className="product-section p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-medium text-gray-800">
                       {quiz.topic} · {quiz.total_count}
@@ -228,12 +223,9 @@ export default function QuizPage() {
                       {answeredCount}/{quiz.total_count} {t('quiz.answered')}
                     </span>
                   </div>
-                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
+                  <p className="quiz-progress" aria-label={`${progressPercent}%`}>
+                    {progressPercent}%
+                  </p>
                 </div>
 
                 {quiz.questions.map((q, i) => (
@@ -242,7 +234,7 @@ export default function QuizPage() {
                     className="spell-card bg-white rounded-xl border border-gray-200 p-5 transition-all duration-200 hover:shadow-sm"
                   >
                     <div className="flex items-start gap-2 mb-3">
-                      <span className="text-xs bg-gradient-to-br from-gray-100 to-gray-50 text-gray-600 px-2.5 py-1 rounded-lg font-bold border border-gray-200">
+                      <span className="text-xs bg-gray-50 text-gray-600 px-2.5 py-1 rounded-lg font-bold border border-gray-200">
                         {i + 1}
                       </span>
                       <span
@@ -322,7 +314,7 @@ export default function QuizPage() {
                 <button
                   onClick={handleSubmit}
                   disabled={loading || answeredCount < quiz.total_count}
-                  className="w-full py-3.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm hover:from-green-700 hover:to-emerald-600 disabled:opacity-50 font-semibold transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="primary-action w-full justify-center py-3"
                 >
                   {loading
                     ? t('common.submitting')
@@ -335,7 +327,7 @@ export default function QuizPage() {
             {result && (
               <div className="space-y-4">
                 {/* Score Card */}
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100 p-8 text-center">
+                <div className="product-section quiz-result-summary">
                   <div className="w-20 h-20 mx-auto mb-4 bg-white rounded-full flex items-center justify-center shadow-sm border border-blue-100">
                     <span className="text-3xl font-bold text-blue-600">
                       {Math.round((result.correct_count / result.total_count) * 100)}%
@@ -353,30 +345,13 @@ export default function QuizPage() {
                           ? t('quiz.score_good')
                           : t('quiz.score_review')}
                   </p>
-                  {/* Visual progress ring */}
-                  <div className="mt-4 w-full h-3 bg-white/50 rounded-full overflow-hidden max-w-xs mx-auto">
-                    <div
-                      className={`h-full rounded-full transition-all duration-1000 ease-out ${
-                        result.correct_count / result.total_count >= 0.8
-                          ? 'bg-gradient-to-r from-green-400 to-emerald-500'
-                          : result.correct_count / result.total_count >= 0.6
-                            ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
-                            : 'bg-gradient-to-r from-red-400 to-rose-500'
-                      }`}
-                      style={{
-                        width: `${Math.round((result.correct_count / result.total_count) * 100)}%`,
-                      }}
-                    />
-                  </div>
                 </div>
 
                 {result.results.map((r, i) => (
                   <div
                     key={r.question_id}
                     className={`rounded-xl border p-5 transition-all duration-200 ${
-                      r.is_correct
-                        ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200'
-                        : 'bg-gradient-to-br from-red-50 to-rose-50 border-red-200'
+                      r.is_correct ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-3">
@@ -433,8 +408,8 @@ export default function QuizPage() {
             {wrongAnswers.length === 0 ? (
               <div className="flex items-center justify-center py-16">
                 <div className="text-center max-w-sm">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-green-100 to-emerald-100 rounded-2xl flex items-center justify-center">
-                    <span className="text-3xl">🎉</span>
+                  <div className="product-state-icon mx-auto mb-4">
+                    <Icon name="check" size={22} />
                   </div>
                   <p className="text-gray-600 font-medium mb-2">{t('quiz.noWrongAnswers')}</p>
                   <p className="text-sm text-gray-400">{t('quiz.noWrongAnswersHint')}</p>
@@ -461,21 +436,6 @@ export default function QuizPage() {
                     <span className="text-xs text-gray-400">
                       {t('quiz.reviewCount', { count: w.review_count })}
                     </span>
-                    {/* Mastery progress bar */}
-                    <div className="flex-1 max-w-[120px] ml-auto">
-                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            w.mastery_level >= 3
-                              ? 'bg-green-400'
-                              : w.mastery_level >= 1
-                                ? 'bg-yellow-400'
-                                : 'bg-red-400'
-                          }`}
-                          style={{ width: `${(w.mastery_level / 5) * 100}%` }}
-                        />
-                      </div>
-                    </div>
                   </div>
                   <p className="text-sm text-gray-800 mb-2 font-medium">{w.question_text}</p>
                   <div className="flex gap-3 text-xs mb-3">
@@ -496,13 +456,13 @@ export default function QuizPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleReview(w.id, true)}
-                      className="text-xs px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-lg hover:from-green-100 hover:to-emerald-100 transition-all duration-200 border border-green-200 font-medium"
+                      className="text-xs px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors border border-green-200 font-medium"
                     >
                       ✓ {t('quiz.mastered')}
                     </button>
                     <button
                       onClick={() => handleReview(w.id, false)}
-                      className="text-xs px-4 py-2 bg-gradient-to-r from-red-50 to-rose-50 text-red-700 rounded-lg hover:from-red-100 hover:to-rose-100 transition-all duration-200 border border-red-200 font-medium"
+                      className="text-xs px-4 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors border border-red-200 font-medium"
                     >
                       ✕ {t('quiz.needsReview')}
                     </button>
@@ -515,18 +475,15 @@ export default function QuizPage() {
 
         {/* Anki Export Tab */}
         {tab === 'anki' && (
-          <div className="spell-card bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center">
-              <span className="text-3xl">📦</span>
+          <div className="product-section p-12 text-center">
+            <div className="product-state-icon mx-auto mb-4">
+              <Icon name="database" size={22} />
             </div>
             <h3 className="text-lg font-semibold text-gray-800 mb-2">{t('quiz.exportAnki')}</h3>
             <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto leading-relaxed">
               {t('quiz.exportAnkiDesc')}
             </p>
-            <button
-              onClick={handleExportAnki}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg text-sm hover:from-blue-700 hover:to-blue-600 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
-            >
+            <button onClick={handleExportAnki} className="primary-action mx-auto">
               {t('quiz.exportAnkiFile')}
             </button>
           </div>

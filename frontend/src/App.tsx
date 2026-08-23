@@ -56,7 +56,7 @@ function App() {
       <a href="#workspace-main" className="skip-link">
         {t('nav.skipContent')}
       </a>
-      <div className="app-shell flex h-screen">
+      <div className="app-shell flex min-h-[100dvh] h-[100dvh]">
         <nav className="workspace-sidebar" aria-label={t('nav.primary')}>
           <NavLink to="/" className="workspace-brand" aria-label={t('nav.home')}>
             <span className="workspace-brand-mark">K</span>

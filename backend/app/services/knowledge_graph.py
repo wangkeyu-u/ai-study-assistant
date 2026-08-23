@@ -303,7 +303,7 @@ async def build_graph(doc_ids: list[str] | None = None) -> dict:
         # Load chunks for this document
         with get_db() as conn:
             chunks = conn.execute(
-                "SELECT id, text FROM chunks WHERE doc_id = ?",
+                "SELECT id, text FROM chunks WHERE doc_id = ? AND is_active = 1",
                 (doc_id,),
             ).fetchall()
 

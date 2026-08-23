@@ -12,6 +12,12 @@ from openai import AsyncOpenAI
 
 from app.services.citation_validator import validate_citation_coverage
 from app.services.context_utils import build_context_text
+from app.services.language import (
+    AnswerLanguage,
+    answer_language_instruction,
+    insufficient_context_message,
+    resolve_answer_language,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +54,12 @@ SYSTEM_PROMPT = """你是一个学习助手。你的任务是基于提供的参�
 
 规则：
 1. 只能基于提供的参考资料回答，不要使用你自己的知识。
-2. 如果参考资料中没有足够信息来回答问题，请明确告知："根据现有资料，没有找到足够的信息来回答这个问题。"
+2. 如果参考资料中没有足够信息，请使用要求的回答语言明确说明证据缺口。
 3. 每个事实性陈述所在的完整句子末尾必须标注引用来源，使用 [编号] 格式。例如："这个概念最早在1990年提出[1]。"
 4. 引用编号对应下方参考资料中的序号。
 5. 回答要简洁、准确、有条理。
+{language_instruction}
+{response_instructions}
 {history_note}
 参考资料：
 {context}"""
@@ -82,14 +90,31 @@ class Generator:
             self.client = AsyncOpenAI(**kwargs)  # type: ignore[arg-type]
             self.model = model
 
-    def build_prompt(self, query: str, chunks: list, history: list[dict] | None = None) -> str:
+    def build_prompt(
+        self,
+        query: str,
+        chunks: list,
+        history: list[dict] | None = None,
+        response_instructions: str | None = None,
+        answer_language: AnswerLanguage = "auto",
+    ) -> str:
         """Build the full prompt with context from retrieved chunks."""
         context = build_context_text(chunks)
         history_note = HISTORY_NOTE if history else ""
-        return SYSTEM_PROMPT.format(history_note=history_note, context=context)
+        return SYSTEM_PROMPT.format(
+            history_note=history_note,
+            language_instruction=answer_language_instruction(answer_language, query),
+            response_instructions=response_instructions or "",
+            context=context,
+        )
 
     async def generate(
-        self, query: str, chunks: list, history: list[dict] | None = None
+        self,
+        query: str,
+        chunks: list,
+        history: list[dict] | None = None,
+        response_instructions: str | None = None,
+        answer_language: AnswerLanguage = "auto",
     ) -> GenerationResult:
         """Generate a complete answer (non-streaming).
 
@@ -100,12 +125,24 @@ class Generator:
         """
         if not chunks:
             return GenerationResult(
-                content="根据现有资料，没有找到足够的信息来回答这个问题。请上传相关资料后再试。",
+                content=insufficient_context_message(answer_language, query),
                 final_prompt="(no context)",
             )
 
-        prompt = self.build_prompt(query, chunks, history)
-        messages = self._build_messages(query, chunks, history)
+        prompt = self.build_prompt(
+            query,
+            chunks,
+            history,
+            response_instructions,
+            answer_language,
+        )
+        messages = self._build_messages(
+            query,
+            chunks,
+            history,
+            response_instructions,
+            answer_language,
+        )
         start = time.time()
 
         try:
@@ -121,12 +158,48 @@ class Generator:
                 final_prompt=prompt,
             )
 
-        elapsed = (time.time() - start) * 1000
         content = response.choices[0].message.content or ""
         usage = response.usage
+        prompt_tokens = usage.prompt_tokens if usage else 0
+        completion_tokens = usage.completion_tokens if usage else 0
+        total_tokens = usage.total_tokens if usage else 0
 
         validation = validate_citation_coverage(content, len(chunks))
         citation_validation_errors = []
+        if not validation.valid:
+            repaired_content, repair_usage = await self._repair_citations(
+                query,
+                content,
+                chunks,
+                answer_language,
+            )
+            if repaired_content:
+                repaired_validation = validate_citation_coverage(repaired_content, len(chunks))
+                if repaired_validation.valid:
+                    content = repaired_content
+                    validation = repaired_validation
+                    logger.info("Citation repair succeeded for query: %s", query[:80])
+                else:
+                    salvaged_content = self._drop_uncited_sentences(
+                        repaired_content,
+                        repaired_validation,
+                    )
+                    salvaged_validation = validate_citation_coverage(
+                        salvaged_content,
+                        len(chunks),
+                    )
+                    if (
+                        salvaged_validation.valid
+                        and salvaged_validation.factual_sentence_count > 0
+                        and self.extract_citations(salvaged_content, chunks)
+                    ):
+                        content = salvaged_content
+                        validation = salvaged_validation
+                        logger.info("Citation salvage succeeded for query: %s", query[:80])
+            prompt_tokens += repair_usage[0]
+            completion_tokens += repair_usage[1]
+            total_tokens += repair_usage[2]
+
         citation_validation_failed = not validation.valid
         if citation_validation_failed:
             citation_validation_errors = [
@@ -137,7 +210,15 @@ class Generator:
                 "Generated answer failed citation validation: %s",
                 ", ".join(citation_validation_errors),
             )
-            content = "根据现有资料，我无法生成带有可靠引用的回答。请换一种问法或检查资料后再试。"
+            if resolve_answer_language(answer_language, query) == "en":
+                content = (
+                    "I could not produce an answer with reliable source citations. "
+                    "Please rephrase the question or review the available sources."
+                )
+            else:
+                content = (
+                    "根据现有资料，我无法生成带有可靠引用的回答。请换一种问法或检查资料后再试。"
+                )
             citations = []
         else:
             citations = self.extract_citations(content, chunks)
@@ -145,10 +226,10 @@ class Generator:
         return GenerationResult(
             content=content,
             citations=citations,
-            prompt_tokens=usage.prompt_tokens if usage else 0,
-            completion_tokens=usage.completion_tokens if usage else 0,
-            total_tokens=usage.total_tokens if usage else 0,
-            generation_time_ms=elapsed,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            generation_time_ms=(time.time() - start) * 1000,
             final_prompt=prompt,
             citation_validation_failed=citation_validation_failed,
             citation_validation_errors=citation_validation_errors,
@@ -159,17 +240,25 @@ class Generator:
         query: str,
         chunks: list,
         history: list[dict] | None = None,
+        response_instructions: str | None = None,
+        answer_language: AnswerLanguage = "auto",
     ) -> AsyncGenerator[dict, None]:
         """Generate answer with streaming tokens."""
         if not chunks:
             yield {
                 "type": "token",
-                "text": "根据现有资料，没有找到足够的信息来回答这个问题。请上传相关资料后再试。",
+                "text": insufficient_context_message(answer_language, query),
             }
             yield {"type": "done"}
             return
 
-        messages = self._build_messages(query, chunks, history)
+        messages = self._build_messages(
+            query,
+            chunks,
+            history,
+            response_instructions,
+            answer_language,
+        )
         full_text = ""
         streamed_parts: list[str] = []
 
@@ -203,7 +292,11 @@ class Generator:
             }
             yield {
                 "type": "token",
-                "text": "根据现有资料，我无法生成带有可靠引用的回答。请换一种问法或检查资料后再试。",
+                "text": (
+                    "I could not produce an answer with reliable source citations."
+                    if resolve_answer_language(answer_language, query) == "en"
+                    else "根据现有资料，我无法生成带有可靠引用的回答。请换一种问法或检查资料后再试。"
+                ),
             }
         else:
             # Buffer until citation validation so unsafe uncited text is never emitted.
@@ -228,6 +321,63 @@ class Generator:
         }
 
         yield {"type": "done"}
+
+    async def _repair_citations(
+        self,
+        query: str,
+        candidate_answer: str,
+        chunks: list,
+        answer_language: AnswerLanguage,
+    ) -> tuple[str, tuple[int, int, int]]:
+        """Give an otherwise useful answer one bounded citation-repair pass."""
+        prompt = (
+            "You are a strict citation editor. Rewrite the candidate answer using only the "
+            "numbered sources below. Every factual sentence must end with one or more valid "
+            "citations such as [1] or [1][2]. Remove any claim that the sources do not support. "
+            "Introductory, transition, summary, and conclusion sentences also require citations. "
+            "Every Markdown table data row must contain a valid citation. Before returning, delete "
+            "any sentence or data row that still lacks one. Do not add a references section and do "
+            "not discuss these instructions.\n"
+            f"{answer_language_instruction(answer_language, query)}\n\n"
+            f"Question:\n{query}\n\n"
+            f"Candidate answer:\n{candidate_answer}\n\n"
+            f"Numbered sources:\n{self._build_context_text(chunks)}"
+        )
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            usage = response.usage
+            return content, (
+                usage.prompt_tokens if usage else 0,
+                usage.completion_tokens if usage else 0,
+                usage.total_tokens if usage else 0,
+            )
+        except Exception as error:
+            logger.warning("Citation repair failed: %s", error)
+            return "", (0, 0, 0)
+
+    @staticmethod
+    def _drop_uncited_sentences(content: str, validation) -> str:
+        """Keep cited evidence instead of refusing an otherwise grounded answer."""
+        if validation.invalid_citation_count or not validation.cited_sentence_count:
+            return content
+
+        salvaged = content
+        for sentence in validation.missing_citation_sentences:
+            salvaged = salvaged.replace(sentence, "", 1)
+
+        cleaned_lines: list[str] = []
+        for line in salvaged.splitlines():
+            stripped = line.strip()
+            if re.fullmatch(r"(?:[-*•]|\d+[.)、])", stripped):
+                continue
+            cleaned_lines.append(line.rstrip())
+        salvaged = "\n".join(cleaned_lines)
+        return re.sub(r"\n{3,}", "\n\n", salvaged).strip()
 
     # ── Citation extraction ────────────────────────────────
 
@@ -280,6 +430,8 @@ class Generator:
         query: str,
         chunks: list,
         history: list[dict] | None = None,
+        response_instructions: str | None = None,
+        answer_language: AnswerLanguage = "auto",
     ) -> list[dict]:
         """Build the OpenAI messages array for the chat completion API.
 
@@ -319,6 +471,8 @@ class Generator:
                 "content": SYSTEM_PROMPT.format(
                     context=self._build_context_text(chunks),
                     history_note=history_note,
+                    language_instruction=answer_language_instruction(answer_language, query),
+                    response_instructions=response_instructions or "",
                 ),
             },
         ]
@@ -338,6 +492,60 @@ class Generator:
         messages.append({"role": "user", "content": query})
 
         return messages
+
+    async def translate_query_for_retrieval(self, query: str, target_language: str) -> str:
+        """Translate a question into a concise search query without answering it."""
+        language_name = "English" if target_language == "en" else "Chinese"
+        prompt = (
+            "You rewrite search queries for a document retrieval system. "
+            f"Translate the query below into {language_name}. Preserve names, acronyms, "
+            "numbers, product names, and technical meaning. Make it concise and keyword-rich. "
+            "Return only one translated search query; do not answer the question.\n\n"
+            f"Query: {query}"
+        )
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=160,
+            )
+            translated = (response.choices[0].message.content or "").strip()
+            translated = translated.strip("` \t\r\n\"'")
+            translated = re.sub(
+                r"^(?:translated query|translation|english|chinese|中文|英文)\s*[:：]\s*",
+                "",
+                translated,
+                flags=re.IGNORECASE,
+            ).strip()
+            if not translated or len(translated) > 600:
+                return query
+            return translated
+        except Exception as error:
+            logger.warning("Cross-language query translation failed: %s", error)
+            return query
+
+    async def generate_hypothetical_passage(self, query: str, language: str) -> str:
+        """Generate a short HyDE passage used only when ordinary retrieval fails."""
+        language_name = "English" if language == "en" else "Chinese"
+        prompt = (
+            "Write a short hypothetical source passage for semantic document retrieval. "
+            "It should contain terminology likely to appear in a document that answers the query. "
+            "Do not cite sources and do not claim certainty. "
+            f"Write 2-3 sentences in {language_name}.\n\nQuery: {query}"
+        )
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=220,
+            )
+            passage = (response.choices[0].message.content or "").strip()
+            return passage[:1200] if passage else ""
+        except Exception as error:
+            logger.warning("HyDE expansion failed: %s", error)
+            return ""
 
     async def rewrite_query(
         self,

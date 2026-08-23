@@ -68,6 +68,54 @@ def test_extract_query_boost_terms_filters_question_noise():
     assert all("什么" not in term for term in terms)
 
 
+def test_extract_query_boost_terms_does_not_cross_chinese_connectors():
+    terms = extract_query_boost_terms("监督学习、无监督学习和强化学习有什么区别？")
+
+    assert "监督学习" in terms
+    assert "无监督学习" in terms
+    assert "强化学习" in terms
+    assert "督学习和" not in terms
+    assert "学习和强" not in terms
+
+
+def test_extract_query_boost_terms_preserves_meaningful_boundary_words():
+    thought_terms = extract_query_boost_terms("机器学习最基本的思想是什么？")
+    data_terms = extract_query_boost_terms("系统怎样从数据中获得预测能力？")
+
+    assert "思想是" in thought_terms
+    assert "从数据中" in data_terms
+
+
+def test_answerability_penalty_pushes_explicit_non_answer_below_evidence():
+    evidence = RetrievedChunk(
+        chunk_id="evidence",
+        text="强化学习通过奖励和惩罚优化策略。",
+        score=0.5,
+        doc_id="doc",
+        doc_name="guide.pdf",
+        page_num=1,
+        chunk_index=0,
+        heading=None,
+        lexical_score=0.5,
+    )
+    distractor = RetrievedChunk(
+        chunk_id="distractor",
+        text="本文只讨论行业新闻，不解释强化学习，也不说明奖励机制。",
+        score=1.0,
+        doc_id="news",
+        doc_name="news.txt",
+        page_num=1,
+        chunk_index=0,
+        heading=None,
+        lexical_score=1.0,
+    )
+
+    Retriever._apply_answerability_penalty([evidence, distractor])
+
+    assert distractor.score < evidence.score
+    assert distractor.lexical_score < evidence.lexical_score
+
+
 def test_hybrid_retrieval_recovers_exact_keyword_match(tmp_db):
     _insert_chunk("doc-keyword", "chunk-keyword", "量子纠缠机制是量子力学的重要现象。")
 
@@ -100,6 +148,21 @@ def test_hybrid_retrieval_recovers_exact_keyword_match(tmp_db):
     lexical = next(chunk for chunk in result.chunks if chunk.chunk_id == "chunk-keyword")
     assert lexical.retrieval_sources == ["fts"]
     assert lexical.lexical_score is not None
+
+
+def test_lexical_retrieval_ignores_inactive_historical_chunks(tmp_db):
+    _insert_chunk("doc-old", "chunk-old", "historical retrieval evidence")
+    with get_connection() as conn:
+        conn.execute("UPDATE chunks SET is_active=0 WHERE id='chunk-old'")
+        conn.commit()
+    embedder = MagicMock()
+    embedder.embed_query.return_value = [0.1]
+    vector_store = MagicMock()
+    vector_store.search.return_value = []
+
+    result = Retriever(vector_store, embedder).retrieve("historical retrieval evidence")
+
+    assert result.chunks == []
 
 
 def test_lexical_retrieval_respects_collection_filter(tmp_db):
@@ -324,7 +387,8 @@ def test_answerability_penalty_deprioritizes_meta_negative_chunks(tmp_db):
     Retriever._apply_answerability_penalty([relevant, distractor])
 
     assert distractor.score < relevant.score
-    assert distractor.lexical_score == 0.55
+    assert distractor.lexical_score is not None
+    assert distractor.lexical_score < 0.5
 
 
 def test_query_coverage_boost_rewards_more_query_fragments(tmp_db):

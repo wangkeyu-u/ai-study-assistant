@@ -42,6 +42,8 @@ def mock_generator():
         )
     )
     gen.rewrite_query = AsyncMock(return_value="rewritten query")
+    gen.translate_query_for_retrieval = AsyncMock(return_value="translated query")
+    gen.generate_hypothetical_passage = AsyncMock(return_value="")
     gen.client = MagicMock()
     gen.model = "test-model"
     return gen
@@ -54,6 +56,7 @@ def mock_vector_store():
     vs.add_chunks.return_value = None
     vs.count.return_value = 0
     vs.delete_by_doc_id.return_value = 5
+    vs.delete_chunks.side_effect = lambda chunk_ids: len(chunk_ids)
     vs.health_check.return_value = True
     return vs
 
@@ -130,6 +133,9 @@ def test_app(tmp_db, mock_rag_pipeline):
     from app.routers import (
         collections as collections_router,
     )
+    from app.routers import (
+        rag as rag_router,
+    )
 
     # Override the global rag_pipeline so get_rag_pipeline() returns our mock
     main_module.rag_pipeline = mock_rag_pipeline
@@ -139,6 +145,7 @@ def test_app(tmp_db, mock_rag_pipeline):
     test_app.include_router(documents.router)
     test_app.include_router(chat.router)
     test_app.include_router(collections_router.router)
+    test_app.include_router(rag_router.router)
 
     # Health endpoint is defined in main.py, not a router — add it here
     @test_app.get("/api/health")

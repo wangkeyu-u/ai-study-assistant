@@ -28,6 +28,9 @@ from app.routers import (
     quiz as quiz_router,
 )
 from app.routers import (
+    rag as rag_router,
+)
+from app.routers import (
     settings as settings_router,
 )
 from app.services.embedder import create_embedder
@@ -137,6 +140,7 @@ app.include_router(backup_router.router)
 app.include_router(quiz_router.router)
 app.include_router(knowledge_graph_router.router)
 app.include_router(multi_agent_router.router)
+app.include_router(rag_router.router)
 app.include_router(settings_router.router)
 
 
