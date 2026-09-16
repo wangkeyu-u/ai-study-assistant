@@ -1,0 +1,111 @@
+{"query": "人工智能的核心目标包括哪些能力？", "relevant_texts": ["推理、学习、感知、理解自然语言和决策"]}
+{"query": "AI主要希望创建什么样的系统？", "relevant_texts": ["创建能够模拟人类智能行为的系统"]}
+{"query": "机器学习和人工智能是什么关系？", "relevant_texts": ["机器学习（Machine Learning）是人工智能中最重要的子领域之一"]}
+{"query": "机器学习为什么不需要人为写出所有规则？", "relevant_texts": ["从数据中自动学习和改进，而不需要显式编程"]}
+{"query": "机器学习最基本的思想是什么？", "relevant_texts": ["通过算法从数据中发现模式和规律"]}
+{"query": "人工智能属于计算机科学的什么领域？", "relevant_texts": ["计算机科学的一个重要分支"]}
+{"query": "Machine Learning 的中文含义是什么？", "relevant_texts": ["机器学习（Machine Learning）"]}
+{"query": "系统怎样从数据中获得预测能力？", "relevant_texts": ["从数据中自动学习和改进"]}
+{"query": "机器学习主要分为哪三种类型？", "relevant_texts": ["监督学习（Supervised Learning）", "无监督学习（Unsupervised Learning）", "强化学习（Reinforcement Learning）"]}
+{"query": "监督学习使用什么样的训练数据？", "relevant_texts": ["监督学习使用带标签的训练数据"]}
+{"query": "分类和回归属于哪一类学习任务？", "relevant_texts": ["常见任务包括分类和回归"]}
+{"query": "监督学习有哪些典型算法？", "relevant_texts": ["决策树、支持向量机"]}
+{"query": "垃圾邮件过滤和信用评分通常使用什么学习方式？", "relevant_texts": ["垃圾邮件过滤、图像识别"]}
+{"query": "无监督学习试图从数据中发现什么？", "relevant_texts": ["从未标记的数据中发现隐藏的结构和模式"]}
+{"query": "K-Means、DBSCAN、PCA分别属于哪类方法？", "relevant_texts": ["K-Means、DBSCAN"]}
+{"query": "客户分群和异常检测适合使用哪类机器学习？", "relevant_texts": ["客户分群、异常检测、推荐系统"]}
+{"query": "强化学习如何逐步优化策略？", "relevant_texts": ["通过试错获得奖励或惩罚，逐步优化策略"]}
+{"query": "Q-Learning、Policy Gradient 和 PPO 属于什么算法？", "relevant_texts": ["Q-Learning、Policy Gradient、PPO"]}
+{"query": "自动驾驶和机器人控制可采用什么学习范式？", "relevant_texts": ["游戏AI、机器人控制、自动驾驶"]}
+{"query": "强化学习中的智能体如何学习？", "relevant_texts": ["通过智能体与环境的交互来学习最优行为策略"]}
+{"query": "深度学习主要依赖什么模型结构？", "relevant_texts": ["使用多层神经网络来处理复杂的数据"]}
+{"query": "CNN最适合处理哪些任务？", "relevant_texts": ["图像分类、目标检测、语义分割"]}
+{"query": "卷积神经网络怎样提取图像特征？", "relevant_texts": ["通过卷积层自动提取空间特征"]}
+{"query": "RNN通常用于处理什么类型的数据？", "relevant_texts": ["适用于序列数据处理"]}
+{"query": "LSTM和GRU解决了RNN的什么问题？", "relevant_texts": ["解决了长距离依赖问题"]}
+{"query": "Transformer是什么时候由谁提出的？", "relevant_texts": ["2017年由Google提出"]}
+{"query": "Transformer架构的核心机制是什么？", "relevant_texts": ["基于自注意力机制"]}
+{"query": "GPT、BERT和T5基于哪种架构？", "relevant_texts": ["GPT、BERT、T5等模型都基于Transformer"]}
+{"query": "RAG回答问题的基本流程是什么？", "relevant_texts": ["先从知识库中检索相关文档片段，再将其作为上下文"]}
+{"query": "检索增强生成能带来什么好处？", "relevant_texts": ["有效减少幻觉并提供可溯源的答案"]}
+{"query": "准确率、精确率和召回率分别表示什么？", "relevant_texts": ["准确率（Accuracy）：正确预测的比例", "精确率（Precision）：正类预测中真正例的比例", "召回率（Recall）：真正例占所有正例的比例"]}
+{"query": "F1分数是如何定义的？", "relevant_texts": ["精确率和召回率的调和平均值"]}
+{"query": "什么是模型过拟合？", "relevant_texts": ["在训练数据上表现很好但在新数据上泛化能力差"]}
+{"query": "有哪些方法可以缓解过拟合？", "relevant_texts": ["正则化、Dropout、早停、数据增强"]}
+{"query": "模型欠拟合时应该如何改善？", "relevant_texts": ["需要增加模型复杂度"]}
+{"query": "向量嵌入的作用是什么？", "relevant_texts": ["将文本、图像等高维数据映射到低维向量空间"]}
+{"query": "为什么语义相似内容可以通过向量检索找到？", "relevant_texts": ["语义相似的内容距离更近"]}
+{"query": "常见的文本嵌入模型有哪些？", "relevant_texts": ["Word2Vec、GloVe、BERT嵌入"]}
+{"query": "哪些产品属于向量数据库？", "relevant_texts": ["ChromaDB、Pinecone、Milvus、Weaviate"]}
+{"query": "向量数据库常用什么近似最近邻索引？", "relevant_texts": ["近似最近邻搜索（ANN），如HNSW索引"]}
+{"query": "这份资料有没有介绍量子纠缠实验？", "expect_no_results": true}
+{"query": "文档中是否说明了法国大革命的起因？", "expect_no_results": true}
+{"query": "教材有没有给出红烧肉的制作步骤？", "expect_no_results": true}
+{"query": "资料中是否讨论了马来西亚签证政策？", "expect_no_results": true}
+{"query": "文档有没有说明太阳系各行星的公转周期？", "expect_no_results": true}
+{"query": "自动驾驶和机器人控制可采用什么学习范式？", "relevant_texts": ["强化学习通过智能体与环境的交互来学习最优行为策略"], "forbidden_texts": ["这是一段市场新闻，用自动驾驶、机器人控制、游戏AI等词描述行业热点"]}
+{"query": "F1分数和精确率、召回率之间是什么关系？", "relevant_texts": ["F1分数：精确率和召回率的调和平均值"], "forbidden_texts": ["本文只说明监控字段需要被采集和告警，不定义F1分数"]}
+{"query": "K-Means和DBSCAN对应哪类学习任务？", "relevant_texts": ["无监督学习从未标记的数据中发现隐藏的结构和模式"], "forbidden_texts": ["这篇随笔只是生活化类比，不说明无监督学习的定义"]}
+{"query": "What happens to an old citation after rebuilding the current index?", "relevant_chunk_ids": ["index-v2"], "forbidden_chunk_ids": ["index-v1"]}
+{"query": "How large is the embedding vector in Atlas v2?", "relevant_chunk_ids": ["index-v2"], "forbidden_chunk_ids": ["index-v1"]}
+{"query": "Should a 21 MiB upload be accepted by v2?", "relevant_chunk_ids": ["index-v2"], "forbidden_chunk_ids": ["index-v1"]}
+{"query": "当前索引重建之后旧引用还能指向原片段吗？", "relevant_chunk_ids": ["index-v2"], "forbidden_chunk_ids": ["index-v1"]}
+{"query": "Atlas v2 的向量维度是多少？", "relevant_chunk_ids": ["index-v2"], "forbidden_chunk_ids": ["index-v1"]}
+{"query": "v2 是否接受 21 MiB 文件？", "relevant_chunk_ids": ["index-v2"], "forbidden_chunk_ids": ["index-v1"]}
+{"query": "How many total attempts can a read request make?", "relevant_chunk_ids": ["retry-current"], "forbidden_chunk_ids": ["retry-draft"]}
+{"query": "What is the sum of all delays before the final read retry?", "relevant_chunk_ids": ["retry-current"], "forbidden_chunk_ids": ["retry-draft"]}
+{"query": "Can a timed-out write safely be retried automatically?", "relevant_chunk_ids": ["retry-current"], "forbidden_chunk_ids": ["retry-draft"]}
+{"query": "Does the current policy retry writes five times?", "relevant_chunk_ids": ["retry-current"], "forbidden_chunk_ids": ["retry-draft"]}
+{"query": "读请求第一次失败后最多再试几次？", "relevant_chunk_ids": ["retry-current"], "forbidden_chunk_ids": ["retry-draft"]}
+{"query": "写操作超时是否意味着没有写成功？", "relevant_chunk_ids": ["retry-current"], "forbidden_chunk_ids": ["retry-draft"]}
+{"query": "读取重试的等待总时间是多少？", "relevant_chunk_ids": ["retry-current"], "forbidden_chunk_ids": ["retry-draft"]}
+{"query": "Is retrieval confidence a probability that an answer is correct?", "relevant_chunk_ids": ["gate"], "forbidden_chunk_ids": ["gate-distractor"]}
+{"query": "What is the downside of refusing weak evidence?", "relevant_chunk_ids": ["gate"], "forbidden_chunk_ids": ["gate-distractor"]}
+{"query": "Does a high confidence score remove the need for review?", "relevant_chunk_ids": ["gate"], "forbidden_chunk_ids": ["gate-distractor"]}
+{"query": "Why combine ranks instead of raw BM25 and vector scores?", "relevant_chunk_ids": ["rrf"]}
+{"query": "What does k equal in the Atlas fusion rule?", "relevant_chunk_ids": ["rrf"]}
+{"query": "Does rank fusion keep the original score gaps?", "relevant_chunk_ids": ["rrf"]}
+{"query": "RRF 的 k 是多少？", "relevant_chunk_ids": ["rrf"]}
+{"query": "同一片段在两路排名出现时贡献怎么算？", "relevant_chunk_ids": ["rrf"]}
+{"query": "按排名融合会丢掉什么信息？", "relevant_chunk_ids": ["rrf"]}
+{"query": "Why could the best global hits omit one of two compared documents?", "relevant_chunk_ids": ["coverage"]}
+{"query": "Can top_k=1 cover two selected sources?", "relevant_chunk_ids": ["coverage"]}
+{"query": "问题和答案没有共同关键词时应该依靠什么？", "relevant_chunk_ids": ["embedding"]}
+{"query": "为什么英文结果不能证明跨语言检索有效？", "relevant_chunk_ids": ["embedding"]}
+{"query": "May the hypothetical passage be used as a citation?", "relevant_chunk_ids": ["hyde"]}
+{"query": "Where must the final answer evidence come from when using HyDE?", "relevant_chunk_ids": ["hyde"]}
+{"query": "HyDE 生成的段落能直接当作证据吗？", "relevant_chunk_ids": ["hyde"]}
+{"query": "Does passing unit tests authorize a production release?", "relevant_chunk_ids": ["release"]}
+{"query": "Has Atlas been validated with customer data?", "relevant_chunk_ids": ["release"]}
+{"query": "Who must approve a release?", "relevant_chunk_ids": ["release"]}
+{"query": "How do we resolve an interrupted write before retrying?", "relevant_chunk_ids": ["ops"]}
+{"query": "What prevents sending the same completed operation again?", "relevant_chunk_ids": ["ops"]}
+{"query": "Is 200 requests per minute a measured benchmark?", "relevant_chunk_ids": ["capacity"]}
+{"query": "What is the measured peak throughput of Atlas?", "expect_no_results": true}
+{"query": "缓存 TTL 是多少秒？", "relevant_chunk_ids": ["cache"], "forbidden_chunk_ids": ["cache-old"]}
+{"query": "权限改变时缓存应该怎么处理？", "relevant_chunk_ids": ["cache"], "forbidden_chunk_ids": ["cache-old"]}
+{"query": "私有文档可以进入共享缓存吗？", "relevant_chunk_ids": ["cache"], "forbidden_chunk_ids": ["cache-old"]}
+{"query": "How long does the current cache live?", "relevant_chunk_ids": ["cache"], "forbidden_chunk_ids": ["cache-old"]}
+{"query": "What path pattern is rejected during restore?", "relevant_chunk_ids": ["backup"]}
+{"query": "Does a backup include API keys?", "relevant_chunk_ids": ["backup"]}
+{"query": "为什么恢复备份前要检查路径？", "relevant_chunk_ids": ["backup"]}
+{"query": "Explain both retry policy and reconciliation after an interrupted write.", "relevant_chunk_ids": ["retry-current", "ops"], "forbidden_chunk_ids": ["retry-draft"]}
+{"query": "How do rebuilding and backup restore preserve trustworthy references?", "relevant_chunk_ids": ["index-v2", "backup"], "forbidden_chunk_ids": ["index-v1"]}
+{"query": "比较两份文档时为何需要覆盖约束，RRF 又解决什么问题？", "relevant_chunk_ids": ["coverage", "rrf"]}
+{"query": "What two safeguards prevent generated text from becoming trusted evidence?", "relevant_chunk_ids": ["hyde", "gate"], "forbidden_chunk_ids": ["gate-distractor"]}
+{"query": "How does the current cache policy differ from the archived policy?", "relevant_chunk_ids": ["cache", "cache-old"]}
+{"query": "What was Atlas production uptime last month?", "expect_no_results": true}
+{"query": "Which GPU was used for the Atlas load test?", "expect_no_results": true}
+{"query": "What is the CEO phone number?", "expect_no_results": true}
+{"query": "How many tokens does Atlas spend per month?", "expect_no_results": true}
+{"query": "What measured accuracy did fine-tuning achieve?", "expect_no_results": true}
+{"query": "What is the v3 upload limit?", "expect_no_results": true}
+{"query": "What were the production incident counts?", "expect_no_results": true}
+{"query": "Which real customers approved deployment?", "expect_no_results": true}
+{"query": "Atlas 的测试集有多少真实客户？", "expect_no_results": true}
+{"query": "缓存的 AES 密钥是多少？", "expect_no_results": true}
+{"query": "部署的 Kubernetes 集群在哪个地区？", "expect_no_results": true}
+{"query": "RRF 相比向量检索准确率提升多少？", "expect_no_results": true}
+{"query": "Which metric balances precision and recall?", "relevant_chunk_ids": ["ml-basics-3"], "forbidden_chunk_ids": ["distractor-definition"]}
+{"query": "How can an agent learn by being rewarded or penalized?", "relevant_chunk_ids": ["ml-basics-1"], "forbidden_chunk_ids": ["distractor-ai-news-0"]}
+{"query": "Which approach finds groups without annotated examples?", "relevant_chunk_ids": ["ml-basics-1"], "forbidden_chunk_ids": ["distractor-analogy-0"]}

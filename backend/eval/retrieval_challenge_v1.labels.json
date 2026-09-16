@@ -1,0 +1,445 @@
+{
+  "status": "AI-authored synthetic challenge; not independent human-labeled benchmark",
+  "query_tags": {
+    "What happens to an old citation after rebuilding the current index?": {
+      "category": "near_duplicate",
+      "language": "en"
+    },
+    "How large is the embedding vector in Atlas v2?": {
+      "category": "numeric",
+      "language": "en"
+    },
+    "Should a 21 MiB upload be accepted by v2?": {
+      "category": "numeric",
+      "language": "en"
+    },
+    "当前索引重建之后旧引用还能指向原片段吗？": {
+      "category": "cross_language",
+      "language": "zh"
+    },
+    "Atlas v2 的向量维度是多少？": {
+      "category": "cross_language",
+      "language": "zh"
+    },
+    "v2 是否接受 21 MiB 文件？": {
+      "category": "cross_language",
+      "language": "zh"
+    },
+    "How many total attempts can a read request make?": {
+      "category": "numeric",
+      "language": "en"
+    },
+    "What is the sum of all delays before the final read retry?": {
+      "category": "numeric",
+      "language": "en"
+    },
+    "Can a timed-out write safely be retried automatically?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "Does the current policy retry writes five times?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "读请求第一次失败后最多再试几次？": {
+      "category": "cross_language",
+      "language": "zh"
+    },
+    "写操作超时是否意味着没有写成功？": {
+      "category": "cross_language",
+      "language": "zh"
+    },
+    "读取重试的等待总时间是多少？": {
+      "category": "cross_language",
+      "language": "zh"
+    },
+    "Is retrieval confidence a probability that an answer is correct?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "What is the downside of refusing weak evidence?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "Does a high confidence score remove the need for review?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "Why combine ranks instead of raw BM25 and vector scores?": {
+      "category": "cross_language",
+      "language": "en"
+    },
+    "What does k equal in the Atlas fusion rule?": {
+      "category": "cross_language",
+      "language": "en"
+    },
+    "Does rank fusion keep the original score gaps?": {
+      "category": "cross_language",
+      "language": "en"
+    },
+    "RRF 的 k 是多少？": {
+      "category": "abbreviation",
+      "language": "zh"
+    },
+    "同一片段在两路排名出现时贡献怎么算？": {
+      "category": "paraphrase",
+      "language": "zh"
+    },
+    "按排名融合会丢掉什么信息？": {
+      "category": "paraphrase",
+      "language": "zh"
+    },
+    "Why could the best global hits omit one of two compared documents?": {
+      "category": "cross_language",
+      "language": "en"
+    },
+    "Can top_k=1 cover two selected sources?": {
+      "category": "cross_language",
+      "language": "en"
+    },
+    "问题和答案没有共同关键词时应该依靠什么？": {
+      "category": "semantic_heavy",
+      "language": "zh"
+    },
+    "为什么英文结果不能证明跨语言检索有效？": {
+      "category": "semantic_heavy",
+      "language": "zh"
+    },
+    "May the hypothetical passage be used as a citation?": {
+      "category": "abbreviation",
+      "language": "en"
+    },
+    "Where must the final answer evidence come from when using HyDE?": {
+      "category": "abbreviation",
+      "language": "en"
+    },
+    "HyDE 生成的段落能直接当作证据吗？": {
+      "category": "abbreviation",
+      "language": "zh"
+    },
+    "Does passing unit tests authorize a production release?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "Has Atlas been validated with customer data?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "Who must approve a release?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "How do we resolve an interrupted write before retrying?": {
+      "category": "paraphrase",
+      "language": "en"
+    },
+    "What prevents sending the same completed operation again?": {
+      "category": "paraphrase",
+      "language": "en"
+    },
+    "Is 200 requests per minute a measured benchmark?": {
+      "category": "numeric",
+      "language": "en"
+    },
+    "What is the measured peak throughput of Atlas?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "缓存 TTL 是多少秒？": {
+      "category": "near_duplicate",
+      "language": "zh"
+    },
+    "权限改变时缓存应该怎么处理？": {
+      "category": "near_duplicate",
+      "language": "zh"
+    },
+    "私有文档可以进入共享缓存吗？": {
+      "category": "near_duplicate",
+      "language": "zh"
+    },
+    "How long does the current cache live?": {
+      "category": "cross_language",
+      "language": "en"
+    },
+    "What path pattern is rejected during restore?": {
+      "category": "lexical_heavy",
+      "language": "en"
+    },
+    "Does a backup include API keys?": {
+      "category": "lexical_heavy",
+      "language": "en"
+    },
+    "为什么恢复备份前要检查路径？": {
+      "category": "cross_language",
+      "language": "zh"
+    },
+    "Explain both retry policy and reconciliation after an interrupted write.": {
+      "category": "multi_hop",
+      "language": "en"
+    },
+    "How do rebuilding and backup restore preserve trustworthy references?": {
+      "category": "multi_hop",
+      "language": "en"
+    },
+    "比较两份文档时为何需要覆盖约束，RRF 又解决什么问题？": {
+      "category": "multi_hop",
+      "language": "zh"
+    },
+    "What two safeguards prevent generated text from becoming trusted evidence?": {
+      "category": "multi_hop",
+      "language": "en"
+    },
+    "How does the current cache policy differ from the archived policy?": {
+      "category": "multi_hop",
+      "language": "en"
+    },
+    "What was Atlas production uptime last month?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "Which GPU was used for the Atlas load test?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "What is the CEO phone number?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "How many tokens does Atlas spend per month?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "What measured accuracy did fine-tuning achieve?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "What is the v3 upload limit?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "What were the production incident counts?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "Which real customers approved deployment?": {
+      "category": "unsupported",
+      "language": "en"
+    },
+    "Atlas 的测试集有多少真实客户？": {
+      "category": "unsupported",
+      "language": "zh"
+    },
+    "缓存的 AES 密钥是多少？": {
+      "category": "unsupported",
+      "language": "zh"
+    },
+    "部署的 Kubernetes 集群在哪个地区？": {
+      "category": "unsupported",
+      "language": "zh"
+    },
+    "RRF 相比向量检索准确率提升多少？": {
+      "category": "unsupported",
+      "language": "zh"
+    },
+    "Which metric balances precision and recall?": {
+      "category": "hard_negative",
+      "language": "en"
+    },
+    "How can an agent learn by being rewarded or penalized?": {
+      "category": "semantic_heavy",
+      "language": "en"
+    },
+    "Which approach finds groups without annotated examples?": {
+      "category": "semantic_heavy",
+      "language": "en"
+    },
+    "人工智能的核心目标包括哪些能力？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "AI主要希望创建什么样的系统？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "机器学习和人工智能是什么关系？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "机器学习为什么不需要人为写出所有规则？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "机器学习最基本的思想是什么？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "人工智能属于计算机科学的什么领域？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "Machine Learning 的中文含义是什么？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "系统怎样从数据中获得预测能力？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "机器学习主要分为哪三种类型？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "监督学习使用什么样的训练数据？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "分类和回归属于哪一类学习任务？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "监督学习有哪些典型算法？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "垃圾邮件过滤和信用评分通常使用什么学习方式？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "无监督学习试图从数据中发现什么？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "K-Means、DBSCAN、PCA分别属于哪类方法？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "客户分群和异常检测适合使用哪类机器学习？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "强化学习如何逐步优化策略？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "Q-Learning、Policy Gradient 和 PPO 属于什么算法？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "自动驾驶和机器人控制可采用什么学习范式？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "强化学习中的智能体如何学习？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "深度学习主要依赖什么模型结构？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "CNN最适合处理哪些任务？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "卷积神经网络怎样提取图像特征？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "RNN通常用于处理什么类型的数据？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "LSTM和GRU解决了RNN的什么问题？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "Transformer是什么时候由谁提出的？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "Transformer架构的核心机制是什么？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "GPT、BERT和T5基于哪种架构？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "RAG回答问题的基本流程是什么？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "检索增强生成能带来什么好处？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "准确率、精确率和召回率分别表示什么？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "F1分数是如何定义的？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "什么是模型过拟合？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "有哪些方法可以缓解过拟合？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "模型欠拟合时应该如何改善？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "向量嵌入的作用是什么？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "为什么语义相似内容可以通过向量检索找到？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "常见的文本嵌入模型有哪些？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "哪些产品属于向量数据库？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "向量数据库常用什么近似最近邻索引？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "这份资料有没有介绍量子纠缠实验？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "文档中是否说明了法国大革命的起因？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "教材有没有给出红烧肉的制作步骤？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "资料中是否讨论了马来西亚签证政策？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "文档有没有说明太阳系各行星的公转周期？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "F1分数和精确率、召回率之间是什么关系？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    },
+    "K-Means和DBSCAN对应哪类学习任务？": {
+      "category": "legacy_regression",
+      "language": "zh"
+    }
+  }
+}
