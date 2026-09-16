@@ -1,4 +1,4 @@
-"""Tests for RAG readiness and interview-demo endpoints."""
+"""Tests for RAG readiness and sample-data endpoints."""
 
 
 def test_rag_readiness_endpoint_returns_capability_map(test_app):

@@ -502,7 +502,7 @@ export default function Documents() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold text-blue-700">
-                  {t('documents.interviewDemo')}
+                  {t('documents.sampleDocuments')}
                 </p>
                 <h3 className="mt-1 text-base font-semibold text-slate-800">
                   {t('documents.demoReady')}

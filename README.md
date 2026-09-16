@@ -84,7 +84,7 @@ To start the application, copy `backend/.env.example` to `.env`, configure an em
 
 ## AI-assisted development
 
-See [`docs/AI_ASSISTED_DEVELOPMENT.md`](docs/AI_ASSISTED_DEVELOPMENT.md) for the boundary between implementation assistance and developer ownership. Earlier attribution and commits are preserved; this revision does not rewrite history. The former public interview playbook was removed from the current tree because it was preparation material rather than product evidence.
+See [`docs/AI_ASSISTED_DEVELOPMENT.md`](docs/AI_ASSISTED_DEVELOPMENT.md) for the boundary between implementation assistance and developer ownership. Earlier attribution and commits are preserved; this revision does not rewrite history.
 
 ## Evidence index
 

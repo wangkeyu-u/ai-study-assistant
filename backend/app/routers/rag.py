@@ -1,4 +1,4 @@
-"""RAG capability and readiness endpoints for interview/demo mode."""
+"""RAG capability and readiness endpoints for diagnostics and sample-data workflows."""
 
 from __future__ import annotations
 
@@ -17,10 +17,10 @@ def _status(enabled: bool) -> str:
 
 @router.get("/readiness")
 async def get_rag_readiness():
-    """Return an interview-friendly overview of the RAG system.
+    """Return an read-only operational overview of the RAG system.
 
     This is deliberately read-only and cheap: it summarizes the live pipeline,
-    data footprint, architectural modules, quality gates, and demo talking points
+    data footprint, architectural modules, quality gates, and module behavior notes
     without calling an LLM.
     """
     settings = get_settings()

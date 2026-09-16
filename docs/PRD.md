@@ -651,7 +651,7 @@ CREATE TABLE knowledge_points (
 
 - 触发：问答页右上角「Debug」按钮，点击展开右侧抽屉
 - 展示内容：当前查询的 query、检索到的 top-k chunks（含分数）、完整 prompt、token 消耗、各阶段耗时
-- 用途：开发调试 + 面试演示时展示 RAG 内部流程
+- 用途：开发调试与 RAG 流程排障
 
 #### 11.4 学习看板页（Phase 3 新增）
 
@@ -695,7 +695,7 @@ CREATE TABLE knowledge_points (
 | 图表可视化 | **D3.js** | 知识图谱力导向图（Phase 5） |
 | 全文搜索 | **SQLite FTS5** | 对话历史全文检索（Phase 4） |
 
-> MVP 阶段不引入 LangChain、LangGraph、LlamaIndex 等重框架。RAG 流程用原生 Python 实现，代码更透明、更可控，也更容易在面试中讲清楚原理。后续阶段按需引入。
+> MVP 阶段不引入 LangChain、LangGraph、LlamaIndex 等重框架。RAG 流程用原生 Python 实现，代码更透明、更可控，便于逐环节调试与验证。后续阶段按需引入。
 
 ---
 
@@ -931,13 +931,3 @@ ai-study-assistant/
 ```
 
 ---
-
-### 十七、面试话术参考
-
-这个项目作为 AI 工程项目放进简历时，可以这样讲：
-
-**项目一句话**：基于 RAG 的本地 AI 学习助手，支持上传学习资料后进行智能问答、自动出题、知识图谱构建，所有回答均可溯源到原始文档的具体段落。
-
-**技术亮点可讲的点**：自研文本分块策略（段落感知 + 字数兜底 + 重叠窗口）、混合检索方案（向量 + BM25 + RRF 融合）、RAG 质量控制系统（相似度阈值过滤 + Chunk 质量评分 + 引用强制标注 + Debug 面板可观测）、多轮对话 Query Rewrite（分离检索改写与生成输入，改写失败自动降级）、跨文档知识图谱构建（NER + 共现分析 + D3 可视化）、Anki 联动导出（学习闭环从资料导入到间隔重复复习）、本地优先架构设计（ChromaDB + SQLite + Ollama 全链路本地化）、从单 Pipeline 到 LangGraph 再到 Multi-Agent 的渐进式架构演进。
-
-**面试官可能追问的点**：分块策略为什么这么设计（对比固定长度切分的劣势）、如何处理检索结果不相关的情况（阈值过滤 + Chunk 质量评分 + 后续引入 reranker）、为什么不用 LangChain（MVP 阶段原生实现更透明可控，后续按需引入 LangGraph）、如何保证数据一致性（删除事务 + 启动时清理孤儿数据）、Query Rewrite 为什么和 Generation 分离（检索需要完整独立查询，生成需要回应用户原始意图）、多轮对话上下文窗口为什么选 10 条（token 预算平衡）、知识图谱如何构建（对 chunks 做 NER 提取实体，跨文档共现分析建边，阈值过滤噪声关联）、为什么做 Anki 导出而不是自建间隔重复（复用成熟生态，用户已有 Anki 工作流）。
