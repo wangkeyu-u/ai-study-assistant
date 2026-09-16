@@ -221,7 +221,17 @@ class Retriever:
         vector_only_min_score: float = 0.46,
         reranker: BaseReranker | None = None,
         rerank_top_n: int = 12,
+        vector_search_enabled: bool = True,
+        fusion_method: str = "rrf",
+        query_coverage_enabled: bool = True,
+        score_penalties_enabled: bool = True,
     ):
+        if fusion_method not in {"rrf", "interleave"}:
+            raise ValueError("fusion_method must be rrf or interleave")
+        self.vector_search_enabled = vector_search_enabled
+        self.fusion_method = fusion_method
+        self.query_coverage_enabled = query_coverage_enabled
+        self.score_penalties_enabled = score_penalties_enabled
         self.vector_store = vector_store
         self.embedder = embedder
         self.top_k = top_k
@@ -243,7 +253,7 @@ class Retriever:
         """Retrieve chunks, optionally restricted to a collection and documents."""
         start = time.time()
         candidate_k = max(self.top_k * self.candidate_multiplier, self.top_k)
-        query_embedding = self.embedder.embed_query(query)
+        query_embedding = self.embedder.embed_query(query) if self.vector_search_enabled else []
 
         unique_document_ids = list(dict.fromkeys(document_ids or []))
         vector_filters: list[dict] = []
@@ -258,10 +268,14 @@ class Retriever:
             if vector_filters
             else None
         )
-        vector_results = self.vector_store.search(
-            query_embedding=query_embedding,
-            top_k=candidate_k,
-            where_filter=where_filter,
+        vector_results = (
+            self.vector_store.search(
+                query_embedding=query_embedding,
+                top_k=candidate_k,
+                where_filter=where_filter,
+            )
+            if self.vector_search_enabled
+            else []
         )
         vector_chunks: list[RetrievedChunk] = []
         for result in vector_results:
@@ -289,16 +303,24 @@ class Retriever:
             else []
         )
 
-        if lexical_chunks:
+        if lexical_chunks and not self.vector_search_enabled:
+            chunks = lexical_chunks
+            for rank, chunk in enumerate(chunks, start=1):
+                chunk.score = 1.0 / rank
+            mode = "fts_only"
+        elif lexical_chunks:
             chunks = self._fuse(vector_chunks, lexical_chunks)
             mode = "hybrid"
         else:
             chunks = vector_chunks
             mode = "vector"
 
-        self._apply_quality_penalty(chunks)
-        self._apply_query_coverage_boost(query, chunks)
-        self._apply_answerability_penalty(chunks)
+        if self.score_penalties_enabled:
+            self._apply_quality_penalty(chunks)
+        if self.query_coverage_enabled:
+            self._apply_query_coverage_boost(query, chunks)
+        if self.score_penalties_enabled:
+            self._apply_answerability_penalty(chunks)
         chunks.sort(key=lambda chunk: chunk.score, reverse=True)
         if self.reranker and chunks:
             chunks = self.reranker.rerank(query, chunks[: self.rerank_top_n])
@@ -448,8 +470,17 @@ class Retriever:
             [chunk.chunk_id for chunk in vector_chunks],
             [chunk.chunk_id for chunk in lexical_chunks],
         ]
-        fused_scores = reciprocal_rank_fusion(rankings, self.rrf_k)
-        max_score = 2.0 / (self.rrf_k + 1)
+        if self.fusion_method == "interleave":
+            ordered = []
+            for rank in range(max(map(len, rankings))):
+                for ranking in rankings:
+                    if rank < len(ranking) and ranking[rank] not in ordered:
+                        ordered.append(ranking[rank])
+            fused_scores = {chunk_id: 1.0 / rank for rank, chunk_id in enumerate(ordered, 1)}
+            max_score = 1.0
+        else:
+            fused_scores = reciprocal_rank_fusion(rankings, self.rrf_k)
+            max_score = 2.0 / (self.rrf_k + 1)
 
         by_id = {chunk.chunk_id: chunk for chunk in lexical_chunks}
         for chunk in vector_chunks:

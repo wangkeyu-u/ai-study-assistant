@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
+from typing import Literal
 
 from app.db.database import get_db
 from app.services.agents.base import AgentResponse, BaseAgent
@@ -278,7 +279,7 @@ class SummarizerAgent(BaseAgent):
         query: str,
         history: list[dict] | None,
         collection_id: str | None,
-        answer_language: str,
+        answer_language: Literal["auto", "zh", "en"],
         error: Exception,
     ) -> AgentResponse:
         """Fall back to standard RAG pipeline on failure."""

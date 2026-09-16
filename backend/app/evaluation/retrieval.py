@@ -15,7 +15,7 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.db.database import init_db
-from app.services.embedder import create_embedder
+from app.services.embedder import LocalEmbedder, create_embedder
 from app.services.query_planner import retrieve_with_query_plan
 from app.services.reranker import CrossEncoderReranker
 from app.services.retriever import RetrievedChunk, Retriever
@@ -353,6 +353,7 @@ def build_retrievers(
     *,
     corpus_path: str | None = None,
     isolated_dir: str | None = None,
+    embedding_device: str | None = None,
 ) -> dict[str, Retriever]:
     """Build retrievers that share one embedding model and vector-store client."""
     settings = get_settings()
@@ -366,6 +367,9 @@ def build_retrievers(
             embed_kwargs["base_url"] = settings.openai_base_url
     embedder = create_embedder(settings.embedding_provider, **embed_kwargs)
     if settings.embedding_provider == "local":
+        if embedding_device is not None:
+            assert isinstance(embedder, LocalEmbedder)
+            embedder.model.to(embedding_device)
         # Avoid charging one evaluation mode for one-time model/device warmup.
         embedder.embed_query("retrieval evaluation warmup")
     vector_store = VectorStore(

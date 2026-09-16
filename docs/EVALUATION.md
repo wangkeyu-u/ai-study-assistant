@@ -1,5 +1,7 @@
 # RAG Retrieval Evaluation
 
+> Audit update (2026-09-15): the [111-query component ablation](experiments/retrieval-ablation.md) is the current evaluation entry point. The reports below are historical, on a different corpus/protocol. The 48-query fixture has 4 logical documents and 7 chunks; do not compare its scores directly with the expanded challenge. The original HardNeg denominator combines 3 answerable labeled negatives and 5 no-answer questions; the new ablation reports those populations separately.
+
 ## Dataset
 
 The first golden retrieval set is stored at:
@@ -83,10 +85,10 @@ Baseline date: June 16, 2026.
 
 | Mode | MRR | Hit@1 | Hit@3 | Hit@5 | HardNeg@1 | No-answer accuracy |
 |---|---:|---:|---:|---:|---:|---:|
-| Vector | 0.965 | 0.953 | 0.977 | 0.977 | 0.375 | 0.000 |
+| Vector | 0.965 | 0.930 | 1.000 | 1.000 | 0.375 | 0.000 |
 | Hybrid (Vector + FTS5 + RRF + confidence gate) | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
 
-Hybrid retrieval substantially improves ranking on answerable questions. The calibrated confidence gate rejects all five out-of-scope questions, and hard-negative labels verify that obvious keyword distractors do not occupy the top answer slot.
+The table is aligned to the retained `backend/eval/retrieval.baseline.summary.json`; the previous prose table had stale vector Hit values (0.953/0.977/0.977). Hybrid improves ranking on these answerable questions. Its heuristic confidence gate rejects all five out-of-scope questions in this fixture; this is not calibrated general answerability. Expanded challenge results expose many unsupported queries it still accepts.
 
 ## Next Quality Gate
 
