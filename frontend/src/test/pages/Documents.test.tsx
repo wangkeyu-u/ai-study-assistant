@@ -26,12 +26,12 @@ describe('Documents Page', () => {
     });
   });
 
-  it('offers a one-click interview demo', async () => {
+  it('offers a one-click sample documents', async () => {
     renderDocuments();
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole('button', { name: /Load Interview Demo|载入面试演示/ }).length
+        screen.getAllByRole('button', { name: /Load Sample Documents|载入示例资料/ }).length
       ).toBeGreaterThan(0);
     });
   });

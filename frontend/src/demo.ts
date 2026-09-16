@@ -1,7 +1,7 @@
-export const DEMO_DOCUMENT_TITLE = 'RAG Interview Demo';
+export const DEMO_DOCUMENT_TITLE = 'RAG Sample Documents';
 export const DEMO_DOCUMENT_FILENAME = `${DEMO_DOCUMENT_TITLE}.txt`;
 
-export const DEMO_DOCUMENT_CONTENT = `# Production RAG System Design
+export const DEMO_DOCUMENT_CONTENT = `# RAG System Design — Sample Document
 
 ## Retrieval pipeline
 
@@ -15,7 +15,7 @@ Answers must be grounded in retrieved chunks and use numbered citations such as 
 
 ## Evaluation and observability
 
-The retrieval benchmark tracks MRR, Hit@1, Hit@3, no-answer accuracy, hard-negative accuracy, and p95 latency. The current isolated hybrid baseline reports MRR 1.000, Hit@1 1.000, Hit@3 1.000, no-answer accuracy 1.000, and HardNeg@1 1.000 on the versioned evaluation corpus.
+The retrieval benchmark tracks MRR, Hit@1, Hit@3, no-answer accuracy, hard-negative accuracy, and p95 latency. This document is illustrative sample content, not a benchmark report. Measured results, dataset sizes and limitations are recorded in docs/experiments/retrieval-ablation.md; retrieval scores do not establish generated-answer accuracy.
 
 For every query, the Debug Panel exposes the rewritten query, decomposition subqueries, retrieval mode, vector and lexical scores, selected chunks, confidence decisions, token usage, and retrieval and generation latency. This makes failures inspectable instead of treating the RAG pipeline as a black box.
 

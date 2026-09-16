@@ -129,9 +129,9 @@
     "noDocumentsHint": "上传 PDF、TXT 或 Markdown 格式的学习资料，系统会自动解析内容并建立知识索引。",
     "uploadFirst": "上传第一个文档",
     "orCreateNote": "或新建笔记",
-    "loadDemo": "载入面试演示",
+    "loadDemo": "载入示例资料",
     "loadingDemo": "正在构建演示...",
-    "interviewDemo": "面试演示模式",
+    "sampleDocuments": "示例资料模式",
     "demoReady": "RAG 核心能力演示已就绪",
     "demoHint": "依次体验有据回答、多跳综合与安全拒答。",
     "readyToAsk": "已建立索引",
@@ -190,7 +190,7 @@
     "error_assignCollection": "分配分组失败",
     "error_exportBackup": "备份导出失败",
     "error_import": "导入失败",
-    "error_demo": "构建面试演示失败"
+    "error_demo": "载入示例资料失败"
   },
 
   "quiz": {
@@ -249,7 +249,7 @@
     "loadFailedHint": "请刷新页面重试",
     "documents_unit": "文档",
     "questions_unit": "提问",
-    "ragReadinessKicker": "面试展示",
+    "ragReadinessKicker": "系统概览",
     "ragReadinessTitle": "RAG 能力控制台",
     "ragReadinessHint": "把系统拆成可讲清楚的 AI 应用模块：摄入、检索、规划、上下文优化、生成、可观测性和质量门控。",
     "ragReadinessScore": "就绪度",

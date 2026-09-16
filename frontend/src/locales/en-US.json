@@ -129,9 +129,9 @@
     "noDocumentsHint": "Upload PDF, TXT or Markdown files, and the system will automatically parse and index them.",
     "uploadFirst": "Upload First Document",
     "orCreateNote": "Or Create Note",
-    "loadDemo": "Load Interview Demo",
+    "loadDemo": "Load Sample Documents",
     "loadingDemo": "Building demo...",
-    "interviewDemo": "Interview demo",
+    "sampleDocuments": "Sample documents",
     "demoReady": "Your RAG showcase is ready",
     "demoHint": "Try grounded retrieval, multi-hop synthesis, and safe refusal.",
     "readyToAsk": "Indexed",
@@ -190,7 +190,7 @@
     "error_assignCollection": "Failed to assign collection",
     "error_exportBackup": "Backup export failed",
     "error_import": "Import failed",
-    "error_demo": "Failed to build the interview demo"
+    "error_demo": "Failed to build the sample documents"
   },
 
   "quiz": {
@@ -249,7 +249,7 @@
     "loadFailedHint": "Please refresh the page",
     "documents_unit": "docs",
     "questions_unit": "questions",
-    "ragReadinessKicker": "Interview Demo",
+    "ragReadinessKicker": "System Overview",
     "ragReadinessTitle": "RAG Capability Console",
     "ragReadinessHint": "Break the system into explainable AI application modules: ingestion, retrieval, planning, context optimization, generation, observability, and quality gates.",
     "ragReadinessScore": "Readiness",

@@ -6,7 +6,7 @@ product
 
 ## Users
 
-AI Study Assistant is for students, researchers, and technical learners who keep dense PDFs, notes, and Markdown files locally and want a dependable way to ask cited questions, compare sources, review weak points, and turn documents into practice material. They may also be showing the project in an interview, so the first-run path needs to communicate credibility quickly.
+AI Study Assistant is for students, researchers, and technical learners who keep dense PDFs, notes, and Markdown files locally and want a dependable way to ask cited questions, compare sources, review weak points, and turn documents into practice material.
 
 ## Product Purpose
 
@@ -26,7 +26,7 @@ Avoid generic SaaS landing-page chrome, rainbow AI gradients, oversized hero met
 2. The next action should always be visible: upload, ask, compare, review, or inspect should never require guessing where to go.
 3. Familiar beats flashy: use standard product patterns for navigation, lists, forms, filters, and destructive actions.
 4. Local-first should feel reassuring: connection, storage, indexing, and failure states need plain language and recoverable actions.
-5. Interview mode should show the system's depth quickly while still feeling useful for daily work.
+5. Sample documents should help users try citations, source inspection and refusal behavior before importing their own materials.
 
 ## Accessibility & Inclusion
 
