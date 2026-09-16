@@ -589,7 +589,7 @@ class RAGPipeline:
             answer_style=query_profile.answer_style,
             query_keywords=query_profile.keywords,
             query_language=query_language,
-            corpus_languages=corpus_languages,
+            corpus_languages=list[str](corpus_languages),
             answer_language=resolve_answer_language(answer_language, question),
             embedding_model=settings.embedding_model,
             retrieval_mode=retrieval_result.mode,
