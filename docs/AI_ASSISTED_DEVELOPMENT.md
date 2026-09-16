@@ -1,21 +1,11 @@
-# AI-assisted Development
+# AI-assisted development
 
-AI coding tools were used during implementation. Earlier commits and attribution are preserved. Repository history alone cannot establish who made every earlier decision.
+Codex assisted the September 2026 retrieval changes: component switches, a reproducible ablation runner, regression tests and documentation. Earlier Qoder attribution remains in Git history.
 
-## Assistance in this revision
+## Evidence from this revision
 
-The September 2026 evidence audit used Codex for code inspection, implementation drafts, test execution, failure investigation, refactoring suggestions and documentation drafts. Newly authored experiment fixtures are labeled synthetic. Test outputs and committed experiment records are the evidence; generated prose is not evidence by itself.
+- The challenge set retains 48 original queries and adds 63 AI-authored synthetic cases. These are not independent human labels.
+- Eight retrieval variants ran against the same frozen corpus, with three repetitions per variant. Inputs, model revisions, code hashes and per-query output are in the [experiment record](experiments/retrieval-ablation.md).
+- Tests and type checks cover the implementation. The [failure log](failures/001-small-benchmark.md) records the old small-corpus limitations and metric mismatch.
 
-## Technical ownership and acceptance
-
-The developer owns problem definition, architecture choices, experiment acceptance criteria, evaluation methodology, failure interpretation, security review and final implementation decisions. This describes responsibility, not a claim that all historical code or experiments were manually authored. This AI-assisted revision remains subject to the developer's final technical review; running tests does not substitute for that review.
-
-Generated changes are evaluated using the linked tests, reproducible experiments and failure cases. The audit did not fine-tune a model, invent production deployment, rewrite old commits or remove failure results. Missing model/data resources and unverified capabilities are identified in the experiment records.
-
-## Inspectable evidence
-
-- [Engineering decisions](decisions/)
-- [Failures](failures/)
-- [Experiments](experiments/)
-
-Validation methods used in this revision are recorded with commands and scope. Model quality, contract tests and mock workflow checks must not be conflated.
+The experiment supports inspection of component trade-offs; it does not establish general RAG accuracy. The developer remains responsible for accepting the data labels, retrieval policy and deployment scope. No model parameters were fine-tuned in this revision.
