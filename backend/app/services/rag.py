@@ -93,8 +93,6 @@ class RAGPipeline:
             chunk_size=self.settings.chunk_size,
             chunk_overlap=self.settings.chunk_overlap,
         )
-        # Store last debug info for the /debug endpoint
-        self.last_debug_info: DebugInfo | None = None
 
     # ── Document Ingestion ─────────────────────────────────
 
@@ -417,8 +415,6 @@ class RAGPipeline:
             - The rewritten query is used for RETRIEVAL but the ORIGINAL question is
               passed to the generator. This way the LLM sees the user's exact words
               while retrieval benefits from a more complete query.
-            - Debug info includes the full prompt sent to the LLM, which is critical
-              for debugging retrieval quality and prompt engineering.
         """
         settings = self.settings
         query_profile = analyze_query(question)
@@ -616,7 +612,6 @@ class RAGPipeline:
                 )
                 for c in generation_chunks
             ],
-            final_prompt=generation_result.final_prompt,  # full prompt for debugging
             token_usage=TokenUsage(
                 prompt_tokens=generation_result.prompt_tokens,
                 completion_tokens=generation_result.completion_tokens,
@@ -626,7 +621,6 @@ class RAGPipeline:
             generation_time_ms=round(generation_result.generation_time_ms, 2),
         )
 
-        self.last_debug_info = debug_info
         return generation_result, debug_info
 
     # ── Delete ─────────────────────────────────────────────

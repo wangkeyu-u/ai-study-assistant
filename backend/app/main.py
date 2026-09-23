@@ -144,17 +144,6 @@ app.include_router(rag_router.router)
 app.include_router(settings_router.router)
 
 
-# ── Debug endpoint ─────────────────────────────────────────
-
-
-@app.get("/api/debug/last-query")
-async def get_last_debug_info():
-    """Return debug info from the last RAG query."""
-    if rag_pipeline and rag_pipeline.last_debug_info:
-        return rag_pipeline.last_debug_info.model_dump()
-    return {"error": "还没有进行过查询"}
-
-
 # ── Health check ───────────────────────────────────────────
 
 

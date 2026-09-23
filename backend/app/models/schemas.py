@@ -133,7 +133,6 @@ class DebugInfo(BaseModel):
     context_chunks_after: int | None = None
     context_coverage_score: float | None = None
     top_k_chunks: list[RetrievedChunkInfo]
-    final_prompt: str
     token_usage: TokenUsage
     retrieval_time_ms: float
     generation_time_ms: float

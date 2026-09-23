@@ -1,6 +1,11 @@
 """Tests for chat router — SSE streaming and session management."""
 
+import json
+
+from fastapi.testclient import TestClient
+
 from app.db.database import get_connection
+from app.main import app as main_app
 
 
 class TestChatEndpoint:
@@ -14,6 +19,20 @@ class TestChatEndpoint:
         )
         assert response.status_code == 200
         assert "text/event-stream" in response.headers.get("content-type", "")
+
+    def test_debug_event_excludes_full_prompt(self, test_app):
+        """The caller receives retrieval diagnostics, never source-bearing prompt text."""
+        response = test_app.post("/api/chat", json={"message": "测试问题"})
+        assert response.status_code == 200
+        debug_event = response.text.split("event: debug\n", 1)[1].split("\n\n", 1)[0]
+        payload = json.loads(debug_event.removeprefix("data: "))
+        assert payload["query"] == "测试问题"
+        assert "final_prompt" not in payload
+
+    def test_last_query_debug_endpoint_is_unavailable(self):
+        """Another client cannot fetch the previous chat's global debug record."""
+        response = TestClient(main_app).get("/api/debug/last-query")
+        assert response.status_code == 404
 
     def test_chat_creates_session(self, test_app, tmp_db):
         """First message should create a new session."""
