@@ -1,5 +1,7 @@
 # AI-assisted development
 
+The project owner, Wang Keyu, defined the original RAG workflow and core backend/frontend framework. The [first repository commit](https://github.com/wangkeyu-u/ai-study-assistant/commit/24dbc5ece1) already contains that application structure. Commit counts describe recorded changes, not the weight of the architecture decision.
+
 Codex assisted the September 2026 retrieval changes: component switches, a reproducible ablation runner, regression tests and documentation. Earlier Qoder attribution remains in Git history.
 
 ## Evidence from this revision
