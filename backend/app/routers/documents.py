@@ -61,6 +61,11 @@ async def upload_document(file: UploadFile = File(...), collection_id: str | Non
     if not file.filename:
         raise HTTPException(status_code=400, detail="缺少文件名")
 
+    # Upload names are display names, not paths. Reject separators before
+    # creating the document directory or opening the destination file.
+    if "/" in file.filename or "\\" in file.filename or "\x00" in file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能包含路径")
+
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in settings.supported_extensions:
         raise HTTPException(

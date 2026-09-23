@@ -3,6 +3,8 @@
 import io
 from types import SimpleNamespace
 
+import pytest
+
 from app.db.database import get_connection
 
 
@@ -33,6 +35,29 @@ class TestDocumentUpload:
         files = {"file": ("test.exe", io.BytesIO(b"binary content"), "application/octet-stream")}
         response = test_app.post("/api/documents/upload", files=files)
         assert response.status_code == 400
+
+    @pytest.mark.parametrize("filename", ["../../outside.txt", "..\\..\\outside.txt"])
+    def test_upload_rejects_filename_paths(self, test_app, tmp_path, monkeypatch, filename):
+        """A supplied filename must never select a location outside its new document directory."""
+        documents_dir = tmp_path / "documents"
+        documents_dir.mkdir()
+        monkeypatch.setattr(
+            "app.routers.documents.get_settings",
+            lambda: SimpleNamespace(
+                documents_dir=str(documents_dir),
+                max_upload_size_mb=1,
+                supported_extensions=[".txt"],
+            ),
+        )
+
+        response = test_app.post(
+            "/api/documents/upload",
+            files={"file": (filename, io.BytesIO(b"outside write attempt"), "text/plain")},
+        )
+
+        assert response.status_code == 400
+        assert not (tmp_path / "outside.txt").exists()
+        assert list(documents_dir.iterdir()) == []
 
 
 class TestDocumentDelete:
