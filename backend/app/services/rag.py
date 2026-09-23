@@ -93,6 +93,7 @@ class RAGPipeline:
             chunk_size=self.settings.chunk_size,
             chunk_overlap=self.settings.chunk_overlap,
         )
+
     # ── Document Ingestion ─────────────────────────────────
 
     def ingest_document(
