@@ -137,7 +137,6 @@ PPT 解析、Word 解析、网页抓取、视频字幕解析、OCR、复杂思�
 │   POST /api/chat                RAG 问答（SSE）    │
 │   GET  /api/chat/sessions       会话列表           │
 │   DELETE /api/chat/sessions/{id} 删除会话          │
-│   GET  /api/debug/last-query    上次查询 debug 信息│
 │                                                   │
 ├───────────────────────────────────────────────────┤
 │            RAG Pipeline（Phase 2 版）              │
@@ -251,7 +250,6 @@ LLM 生成回答（流式输出 SSE）
 | `query_embedding_model` | 使用的嵌入模型名 |
 | `top_k_chunks` | 检索到的 chunk 列表（含文本摘要） |
 | `similarity_scores` | 每个 chunk 的相似度分数 |
-| `final_prompt` | 发送给 LLM 的完整 prompt |
 | `token_usage` | prompt tokens + completion tokens |
 | `generation_time_ms` | LLM 生成耗时（毫秒） |
 | `retrieval_time_ms` | 检索耗时（毫秒） |
@@ -330,19 +328,7 @@ DELETE /api/chat/sessions/{id}
 
 #### 9.3 Debug
 
-```
-GET    /api/debug/last-query
-  Response: {
-    query: string,
-    rewritten_query: string | null,    // Phase 2 新增：改写后的查询（如有）
-    query_embedding_model: string,
-    top_k_chunks: [{ chunk_id, text_preview, similarity_score, doc_name, page }],
-    final_prompt: string,
-    token_usage: { prompt_tokens, completion_tokens },
-    retrieval_time_ms: number,
-    generation_time_ms: number
-  }
-```
+调试面板使用当前 `POST /api/chat` 请求的 SSE `debug` 事件。事件仅包含本次请求的检索摘要、token 用量和耗时，不返回完整 prompt。
 
 #### 9.4 知识库分组（Phase 2.5）
 

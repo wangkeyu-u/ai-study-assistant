@@ -103,14 +103,11 @@ def mock_rag_pipeline(mock_embedder, mock_generator, mock_vector_store):
                 page_num=1,
             )
         ],
-        final_prompt="test prompt",
         token_usage=TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
         retrieval_time_ms=50.0,
         generation_time_ms=200.0,
     )
     pipeline.query = AsyncMock(return_value=(gen_result, debug_info))
-    pipeline.last_debug_info = debug_info
-
     return pipeline
 
 
